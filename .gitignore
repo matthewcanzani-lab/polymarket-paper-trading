@@ -1,0 +1,28 @@
+# Secrets — never commit
+.env
+
+# Python virtual environment and caches
+venv/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Large, re-downloadable market data (can always be re-pulled from the API)
+data/*
+!data/.gitkeep
+# ...EXCEPT the prediction log, which is irreplaceable and MUST be committed.
+!data/predictions.db
+
+# Raw API dumps
+*.jsonl
+raw/
+
+# Generated reports/charts (regenerate any time)
+reports/*
+!reports/.gitkeep
+
+# OS / editor junk
+.DS_Store
+.idea/
+.vscode/
