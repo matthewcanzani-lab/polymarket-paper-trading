@@ -20,9 +20,7 @@ ACTIVE = [gamma_market(10, volume=500), gamma_market(11, volume=80_000, bid=0.40
 def fake_api(url, params=None):
     if "prices-history" in url:
         return {"history": [{"t": 1_700_000_000, "p": 0.3}, {"t": 1_700_003_600, "p": 0.35}]}
-    if params["offset"] > 0:
-        return []
-    return RESOLVED if params["closed"] == "true" else ACTIVE
+    return {"markets": RESOLVED if params["closed"] == "true" else ACTIVE}
 
 
 def test_ingest_report_and_history(conn, monkeypatch, tmp_path):

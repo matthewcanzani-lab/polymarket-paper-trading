@@ -38,7 +38,8 @@ def gamma_market(id, *, closed=False, prices=("0.6", "0.4"), outcomes=("Yes", "N
         "closedTime": "2026-03-01 12:00:00+00" if closed else None,
         "bestBid": bid,
         "bestAsk": ask,
-        "events": [{"title": f"Event {id}", "category": category}],
+        "tags": [{"label": category}, {"label": "Some Person"}],
+        "events": [{"title": f"Event {id}", "tags": [{"label": "All"}]}],
     }
     if uma:
         raw["umaResolutionStatus"] = uma

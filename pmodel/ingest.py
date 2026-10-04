@@ -45,8 +45,6 @@ def ingest_price_history(source: MarketSource, conn, min_volume=None, limit=None
 
     Each resolved market only needs fetching once (its history can't change).
     """
-    from pmodel.sources.base import Market  # local import keeps module load light
-
     min_volume = config.MIN_VOLUME_USD if min_volume is None else min_volume
     sql = """
         SELECT m.* FROM markets m JOIN outcomes o USING (platform, market_id)
@@ -61,10 +59,9 @@ def ingest_price_history(source: MarketSource, conn, min_volume=None, limit=None
     rows = conn.execute(sql, (source.platform, min_volume)).fetchall()
     log(f"Fetching price history for {len(rows)} resolved markets (volume >= ${min_volume:,.0f})")
 
-    fields = Market.__dataclass_fields__
     stats = {"markets": 0, "points": 0, "empty": 0}
     for i, row in enumerate(rows, 1):
-        market = Market(**{k: row[k] for k in fields})
+        market = db.market_from_row(row)
         points = source.price_history(market)
         db.save_price_history(conn, market.platform, market.market_id, points, db.utc_now())
         stats["markets"] += 1

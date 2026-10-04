@@ -35,8 +35,9 @@ MIN_VOLUME_USD = float(_env("MIN_VOLUME_USD", 0))
 # the platform behaved differently).
 HISTORY_START_DATE = _env("HISTORY_START_DATE", "2024-01-01")
 
-# Price-history granularity in minutes (60 = one price point per hour).
-PRICE_HISTORY_FIDELITY_MIN = int(_env("PRICE_HISTORY_FIDELITY_MIN", 60))
+# Markets that traded for at most this many days get hourly price history;
+# longer ones get one point every 12 hours (hourly would take many requests each).
+HOURLY_MAX_DAYS = int(_env("HOURLY_MAX_DAYS", 60))
 
 # Be polite to the public API: pause between requests.
 REQUEST_PAUSE_SEC = float(_env("REQUEST_PAUSE_SEC", 0.25))

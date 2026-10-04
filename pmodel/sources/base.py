@@ -5,7 +5,7 @@ in this folder with a class that implements MarketSource. The database, model,
 scorer and dashboard only ever see these dataclasses.
 """
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Iterator, Optional
 
 
@@ -32,6 +32,7 @@ class Market:
     yes_price: Optional[float]  # current/last YES price, 0..1
     best_bid: Optional[float]
     best_ask: Optional[float]
+    tags: list = field(default_factory=list)  # raw platform tags, for later analysis
 
 
 @dataclass

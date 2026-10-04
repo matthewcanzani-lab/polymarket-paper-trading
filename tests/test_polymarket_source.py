@@ -20,7 +20,15 @@ def test_parse_market_decodes_json_string_fields():
     assert m.yes_price == 0.6
     assert m.volume_usd == 1234.5
     assert m.category == "Politics"
+    assert m.tags == ["All", "Politics", "Some Person"]
     assert m.closed_time is None
+
+
+def test_category_mapping_priority():
+    from pmodel.sources.polymarket import category_from_tags
+    assert category_from_tags(["Trump", "NFL"]) == "Sports"  # sports checked before politics
+    assert category_from_tags(["Counter-Strike", "Sports"]) == "Esports"
+    assert category_from_tags(["Random"]) is None
 
 
 def test_non_binary_market_skipped():
@@ -46,33 +54,52 @@ def test_resolution_rules():
     assert disputed.status == "ambiguous"
 
 
-def test_pagination_stops_on_short_page(monkeypatch):
-    monkeypatch.setattr(polymarket, "PAGE_SIZE", 2)
-    pages = {0: [gamma_market(1), gamma_market(2)], 2: [gamma_market(3)]}
+def test_keyset_pagination_follows_cursor(monkeypatch):
+    pages = {None: {"markets": [gamma_market(1), gamma_market(2)], "next_cursor": "c1"},
+             "c1": {"markets": [gamma_market(3)], "next_cursor": "c2"},
+             "c2": {"markets": []}}
     calls = []
 
     def fake_get(url, params=None):
         calls.append(params)
-        return pages.get(params["offset"], [])
+        return pages[params.get("after_cursor")]
 
     monkeypatch.setattr(polymarket.safe_http, "get_json", fake_get)
     ids = [r["id"] for r in PolymarketSource().iter_markets(closed=True, end_date_min="2024-01-01")]
     assert ids == ["1", "2", "3"]
-    assert len(calls) == 2
+    assert len(calls) == 3
     assert calls[0]["closed"] == "true" and calls[0]["end_date_min"] == "2024-01-01"
+    assert calls[0]["include_tag"] == "true"
 
 
-def test_price_history_falls_back_to_windows(monkeypatch):
+def test_short_market_gets_hourly_history_in_14_day_windows(monkeypatch):
     src = PolymarketSource()
-    m = src.parse_market(gamma_market(5, closed=True))
+    m = src.parse_market(gamma_market(5, closed=True))  # lives Jan 1 -> Mar 1 = 59 days
+    calls = []
 
     def fake_get(url, params=None):
-        if params.get("interval") == "max":
-            return {"history": []}
-        return {"history": [{"t": params["startTs"], "p": 0.4}, {"t": params["startTs"] + 60, "p": "0.45"}]}
+        calls.append(params)
+        assert params["endTs"] - params["startTs"] <= polymarket.HOURLY_WINDOW_SEC
+        return {"history": [{"t": params["startTs"], "p": 0.4}, {"t": params["startTs"] + 3600, "p": "0.45"}]}
 
     monkeypatch.setattr(polymarket.safe_http, "get_json", fake_get)
     pts = src.price_history(m)
-    assert len(pts) >= 4
+    assert len(calls) == 5 and all(c["fidelity"] == 60 for c in calls)
+    assert len(pts) == 10
     assert [p.ts for p in pts] == sorted(p.ts for p in pts)
-    assert all(0 <= p.price <= 1 for p in pts)
+
+
+def test_long_market_gets_coarse_history_in_one_request(monkeypatch):
+    src = PolymarketSource()
+    raw = gamma_market(6, closed=True)
+    raw["createdAt"] = "2025-01-01T00:00:00Z"
+    m = src.parse_market(raw)
+    calls = []
+
+    def fake_get(url, params=None):
+        calls.append(params)
+        return {"history": [{"t": 1, "p": 0.5}]}
+
+    monkeypatch.setattr(polymarket.safe_http, "get_json", fake_get)
+    assert len(src.price_history(m)) == 1
+    assert calls == [{"market": "tok6yes", "interval": "max", "fidelity": 720}]

@@ -10,9 +10,30 @@ from typing import Iterator, Optional
 from pmodel import config, safe_http
 from pmodel.sources.base import Market, MarketSource, PricePoint, Resolution
 
-GAMMA_URL = "https://gamma-api.polymarket.com/markets"
+GAMMA_URL = "https://gamma-api.polymarket.com/markets/keyset"  # cursor paging (plain /markets caps the offset)
 PRICES_URL = "https://clob.polymarket.com/prices-history"
-PAGE_SIZE = 500
+PAGE_SIZE = 100  # the API's maximum page size
+
+# Price history quirks (checked against the live API, Oct 2026):
+#  - for closed markets, interval=max only returns data at >= 12h steps;
+#  - hourly data must be requested in windows of at most 14 days.
+HOURLY_WINDOW_SEC = 14 * 24 * 3600
+COARSE_FIDELITY_MIN = 720
+
+# Polymarket has no single "category" field; markets carry many free-form tags.
+# We map them onto a few broad categories, checked in this order.
+CATEGORY_TAGS = [
+    ("Esports", {"esports", "counter-strike", "cs2", "league of legends", "dota 2", "valorant"}),
+    ("Sports", {"sports", "nba", "nfl", "mlb", "nhl", "soccer", "tennis", "ufc", "golf", "f1",
+                "cricket", "college football", "ncaa", "epl", "boxing"}),
+    ("Crypto", {"crypto", "bitcoin", "ethereum", "solana", "crypto prices"}),
+    ("Politics", {"politics", "elections", "us election", "trump", "global elections", "congress"}),
+    ("Geopolitics", {"geopolitics", "world", "middle east", "ukraine", "israel", "china", "iran"}),
+    ("Economy", {"economy", "finance", "business", "fed", "stocks", "earnings", "inflation", "ipos"}),
+    ("Tech & Science", {"tech", "ai", "science", "space"}),
+    ("Culture", {"culture", "pop culture", "movies", "music", "awards", "celebrities", "mentions"}),
+    ("Weather", {"weather", "climate", "temperature"}),
+]
 
 # A closed market counts as cleanly resolved when its final YES price is
 # at least this close to 1 or 0.
@@ -63,44 +84,41 @@ def _iso_to_unix(iso: Optional[str]) -> Optional[int]:
     return int(datetime.strptime(iso, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc).timestamp())
 
 
-def _category(raw: dict) -> Optional[str]:
-    if raw.get("category"):
-        return raw["category"]
+def tag_labels(raw: dict) -> list[str]:
+    tags = list(raw.get("tags") or [])
     for event in raw.get("events") or []:
-        if event.get("category"):
-            return event["category"]
-    for tag in raw.get("tags") or []:
-        if isinstance(tag, dict) and tag.get("label"):
-            return tag["label"]
-    return None
+        tags += event.get("tags") or []
+    labels = [t.get("label") for t in tags if isinstance(t, dict) and t.get("label")]
+    return sorted(set(labels))
+
+
+def category_from_tags(labels: list[str], fallback: Optional[str] = None) -> Optional[str]:
+    lowered = {label.lower() for label in labels}
+    for category, keys in CATEGORY_TAGS:
+        if lowered & keys:
+            return category
+    return fallback
 
 
 class PolymarketSource(MarketSource):
     platform = "polymarket"
 
     def iter_markets(self, closed: bool, end_date_min: Optional[str] = None) -> Iterator[dict]:
-        offset = 0
+        cursor = None
         while True:
-            params = {
-                "limit": PAGE_SIZE,
-                "offset": offset,
-                "closed": str(closed).lower(),
-                "order": "id",
-                "ascending": "true",
-            }
+            params = {"limit": PAGE_SIZE, "closed": str(closed).lower(), "include_tag": "true"}
             if not closed:
                 params["active"] = "true"
             if end_date_min:
                 params["end_date_min"] = end_date_min
+            if cursor:
+                params["after_cursor"] = cursor
             page = safe_http.get_json(GAMMA_URL, params=params)
-            if isinstance(page, dict):  # tolerate a {"data": [...]} wrapper
-                page = page.get("data", [])
-            if not page:
+            markets = page.get("markets") or []
+            yield from markets
+            cursor = page.get("next_cursor")
+            if not markets or not cursor:
                 return
-            yield from page
-            if len(page) < PAGE_SIZE:
-                return
-            offset += PAGE_SIZE
 
     def parse_market(self, raw: dict) -> Optional[Market]:
         outcomes = _maybe_json_list(raw.get("outcomes"))
@@ -121,7 +139,8 @@ class PolymarketSource(MarketSource):
             market_id=str(raw["id"]),
             question=raw.get("question") or "",
             slug=raw.get("slug"),
-            category=_category(raw),
+            category=category_from_tags(tag_labels(raw), raw.get("category")),
+            tags=tag_labels(raw),
             event_title=events[0].get("title") if events else None,
             outcome_yes=str(outcomes[0]),
             outcome_no=str(outcomes[1]),
@@ -157,36 +176,29 @@ class PolymarketSource(MarketSource):
         return Resolution(self.platform, str(raw["id"]), None, "ambiguous", resolved_at)
 
     def price_history(self, market: Market) -> list[PricePoint]:
+        """Hourly history for markets that lived <= HOURLY_MAX_DAYS, else 12-hourly.
+
+        Hourly costs one request per 14 days of market life, so long-running
+        markets get the cheaper coarse series (one request).
+        """
         if not market.yes_token_id:
             return []
-        fidelity = config.PRICE_HISTORY_FIDELITY_MIN
-        data = safe_http.get_json(
-            PRICES_URL,
-            params={"market": market.yes_token_id, "interval": "max", "fidelity": fidelity},
-        )
-        points = _parse_history(data)
-        if points:
-            return points
-
-        # Fallback: some closed markets return nothing for interval=max, but do
-        # answer explicit time windows. Walk the market's lifetime in 30-day chunks.
         start = _iso_to_unix(market.created_at or market.start_date)
         end = _iso_to_unix(market.closed_time or market.end_date)
-        if not start or not end or end <= start:
-            return []
-        window = 30 * 24 * 3600
-        seen = {}
-        t = start
-        while t < end:
-            chunk = safe_http.get_json(
-                PRICES_URL,
-                params={"market": market.yes_token_id, "startTs": t,
-                        "endTs": min(t + window, end), "fidelity": fidelity},
-            )
-            for p in _parse_history(chunk):
-                seen[p.ts] = p
-            t += window
-        return [seen[k] for k in sorted(seen)]
+        if start and end and 0 < end - start <= config.HOURLY_MAX_DAYS * 86400:
+            seen = {}
+            t = start
+            while t < end:
+                chunk = safe_http.get_json(PRICES_URL, params={
+                    "market": market.yes_token_id, "startTs": t,
+                    "endTs": min(t + HOURLY_WINDOW_SEC, end), "fidelity": 60})
+                for p in _parse_history(chunk):
+                    seen[p.ts] = p
+                t += HOURLY_WINDOW_SEC
+            return [seen[k] for k in sorted(seen)]
+        data = safe_http.get_json(PRICES_URL, params={
+            "market": market.yes_token_id, "interval": "max", "fidelity": COARSE_FIDELITY_MIN})
+        return _parse_history(data)
 
 
 def _parse_history(data) -> list[PricePoint]:

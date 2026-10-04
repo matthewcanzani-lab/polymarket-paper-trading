@@ -10,6 +10,7 @@ which markets to study, but it must never be used as a model feature.
 active market looked like at that moment, so later we'll have true
 point-in-time volume and prices.
 """
+import json
 import sqlite3
 from dataclasses import asdict
 from datetime import datetime, timezone
@@ -41,6 +42,7 @@ CREATE TABLE IF NOT EXISTS markets (
     yes_price       REAL,
     best_bid        REAL,
     best_ask        REAL,
+    tags            TEXT,             -- JSON list of the platform's tag labels
     first_seen_at   TEXT NOT NULL,
     last_updated_at TEXT NOT NULL,
     history_fetched_at TEXT,
@@ -101,17 +103,18 @@ def upsert_market(conn, m: Market, now: str) -> None:
     row["is_yes_no"] = int(m.is_yes_no)
     row["active"] = int(m.active)
     row["closed"] = int(m.closed)
+    row["tags"] = json.dumps(m.tags)
     row["now"] = now
     conn.execute(
         """
         INSERT INTO markets (platform, market_id, question, slug, category, event_title,
             outcome_yes, outcome_no, is_yes_no, yes_token_id, created_at, start_date,
             end_date, closed_time, active, closed, volume_usd, liquidity_usd, yes_price,
-            best_bid, best_ask, first_seen_at, last_updated_at)
+            best_bid, best_ask, tags, first_seen_at, last_updated_at)
         VALUES (:platform, :market_id, :question, :slug, :category, :event_title,
             :outcome_yes, :outcome_no, :is_yes_no, :yes_token_id, :created_at, :start_date,
             :end_date, :closed_time, :active, :closed, :volume_usd, :liquidity_usd, :yes_price,
-            :best_bid, :best_ask, :now, :now)
+            :best_bid, :best_ask, :tags, :now, :now)
         ON CONFLICT (platform, market_id) DO UPDATE SET
             question=excluded.question, slug=excluded.slug, category=excluded.category,
             event_title=excluded.event_title, outcome_yes=excluded.outcome_yes,
@@ -121,7 +124,7 @@ def upsert_market(conn, m: Market, now: str) -> None:
             closed_time=excluded.closed_time, active=excluded.active, closed=excluded.closed,
             volume_usd=excluded.volume_usd, liquidity_usd=excluded.liquidity_usd,
             yes_price=excluded.yes_price, best_bid=excluded.best_bid,
-            best_ask=excluded.best_ask, last_updated_at=excluded.last_updated_at
+            best_ask=excluded.best_ask, tags=excluded.tags, last_updated_at=excluded.last_updated_at
         """,
         row,
     )
@@ -156,3 +159,10 @@ def save_price_history(conn, platform: str, market_id: str, points: list[PricePo
         "UPDATE markets SET history_fetched_at=? WHERE platform=? AND market_id=?",
         (now, platform, market_id),
     )
+
+
+def market_from_row(row) -> Market:
+    fields = {k: row[k] for k in Market.__dataclass_fields__ if k != "tags"}
+    for k in ("is_yes_no", "active", "closed"):
+        fields[k] = bool(fields[k])
+    return Market(**fields, tags=json.loads(row["tags"] or "[]"))
