@@ -139,7 +139,7 @@ def build_report(conn, platform="polymarket", now=None) -> str:
     return "\n".join(out)
 
 
-def save_chart(conn, path, platform="polymarket"):
+def save_chart(conn, path, platform="polymarket", note=None):
     """Histogram of log10(volume) for resolved vs active markets, with cutoff lines."""
     import matplotlib
     matplotlib.use("Agg")
@@ -155,9 +155,13 @@ def save_chart(conn, path, platform="polymarket"):
     fig, axes = plt.subplots(2, 1, figsize=(9, 6.5), sharex=True, facecolor="#fcfcfb")
     for ax, (title, vals) in zip(axes, panels):
         ax.set_facecolor("#fcfcfb")
-        ax.hist([max(v, 1) for v in vals], bins=edges, color=bar, edgecolor="#fcfcfb", linewidth=1.5)
+        traded = [v for v in vals if v >= 1]
+        ax.hist(traded, bins=edges, color=bar, edgecolor="#fcfcfb", linewidth=1.5)
         ax.set_xscale("log")
-        ax.set_title(f"{title} — {len(vals):,} markets", loc="left", color=ink, fontsize=11)
+        ax.set_title(f"{title} — {len(traded):,} markets with volume "
+                     f"(+{len(vals) - len(traded):,} with ~$0 not shown)",
+                     loc="left", color=ink, fontsize=11)
+        ax.yaxis.set_major_formatter(matplotlib.ticker.StrMethodFormatter("{x:,.0f}"))
         ax.set_ylabel("markets", color=muted)
         ax.grid(axis="y", color=grid, linewidth=0.8)
         ax.set_axisbelow(True)
@@ -172,6 +176,9 @@ def save_chart(conn, path, platform="polymarket"):
                     bbox=dict(facecolor="#fcfcfb", edgecolor="none", pad=1))
     axes[-1].xaxis.set_major_formatter(matplotlib.ticker.FuncFormatter(lambda x, _: _money(x)))
     axes[-1].set_xlabel("lifetime volume (USD, log scale)", color=muted)
+    if note:
+        axes[0].text(0.99, 0.97, note, transform=axes[0].transAxes, ha="right", va="top",
+                     color=muted, fontsize=8, bbox=dict(facecolor="#fcfcfb", edgecolor="none"))
     fig.tight_layout()
     fig.savefig(path, dpi=130)
     plt.close(fig)

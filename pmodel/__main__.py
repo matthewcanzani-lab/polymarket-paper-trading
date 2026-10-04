@@ -42,7 +42,7 @@ def cmd_volume_report(args):
     print(report)
     config.REPORTS_DIR.mkdir(exist_ok=True)
     (config.REPORTS_DIR / "volume_report.txt").write_text(report + "\n")
-    chart = save_chart(conn, config.REPORTS_DIR / "volume_distribution.png")
+    chart = save_chart(conn, config.REPORTS_DIR / "volume_distribution.png", note=args.note)
     print(f"\nSaved {config.REPORTS_DIR / 'volume_report.txt'} and {chart}")
 
 
@@ -83,7 +83,9 @@ def main():
     s.add_argument("--refetch", action="store_true", help="re-download even if already fetched")
     s.set_defaults(func=cmd_ingest_history)
 
-    sub.add_parser("volume-report", help="show volume distribution to pick a cutoff").set_defaults(func=cmd_volume_report)
+    s = sub.add_parser("volume-report", help="show volume distribution to pick a cutoff")
+    s.add_argument("--note", help="caveat text to print on the chart")
+    s.set_defaults(func=cmd_volume_report)
     sub.add_parser("status", help="row counts in the market database").set_defaults(func=cmd_status)
     sub.add_parser("backup", help="copy the prediction log to BACKUP_DIR").set_defaults(func=cmd_backup)
 
