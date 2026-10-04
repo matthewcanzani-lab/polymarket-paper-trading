@@ -35,7 +35,7 @@ def _pct(values, q):
     return values[lo] + (values[hi] - values[lo]) * (k - lo)
 
 
-def load(conn, platform="polymarket"):
+def load(conn, platform="polymarket", now_s=None):
     resolved = conn.execute(
         """SELECT m.volume_usd, o.resolved_yes, m.category, m.is_yes_no
            FROM markets m JOIN outcomes o USING (platform, market_id)
@@ -43,19 +43,26 @@ def load(conn, platform="polymarket"):
     ambiguous = conn.execute(
         "SELECT COUNT(*) FROM outcomes WHERE platform=? AND status='ambiguous'",
         (platform,)).fetchone()[0]
+    # Betting pool: open markets whose scheduled end hasn't passed. Markets past
+    # their end date are just waiting for the oracle and can't be fairly bet.
+    now_s = now_s or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     active = conn.execute(
         """SELECT volume_usd, best_bid, best_ask, end_date, category
-           FROM markets WHERE platform=? AND closed=0 AND active=1""", (platform,)).fetchall()
+           FROM markets WHERE platform=? AND closed=0 AND active=1
+             AND (end_date IS NULL OR end_date >= ?)""", (platform, now_s)).fetchall()
     return resolved, ambiguous, active
 
 
 def build_report(conn, platform="polymarket", now=None) -> str:
     now = now or datetime.now(timezone.utc)
-    resolved, ambiguous, active = load(conn, platform)
+    now_s = now.strftime("%Y-%m-%dT%H:%M:%SZ")
+    resolved, ambiguous, active = load(conn, platform, now_s)
+    past_end = conn.execute(
+        """SELECT COUNT(*) FROM markets WHERE platform=? AND closed=0 AND active=1
+           AND end_date < ?""", (platform, now_s)).fetchone()[0]
     rv = [r["volume_usd"] for r in resolved]
     av = [a["volume_usd"] for a in active]
     soon = (now + timedelta(days=30)).strftime("%Y-%m-%dT%H:%M:%SZ")
-    now_s = now.strftime("%Y-%m-%dT%H:%M:%SZ")
 
     out = []
     w = out.append
@@ -63,7 +70,9 @@ def build_report(conn, platform="polymarket", now=None) -> str:
     w("=" * 78)
     w(f"Resolved markets (clean YES/NO outcome): {len(resolved):,}")
     w(f"Closed but ambiguous/void (excluded):    {ambiguous:,}")
-    w(f"Active markets right now:                {len(active):,}")
+    w(f"Active markets still before end date:    {len(active):,}"
+      f"   (zero volume: {sum(v == 0 for v in av):,})")
+    w(f"Active but past end date (excluded):     {past_end:,}")
     w(f"Current MIN_VOLUME_USD setting:          {_money(config.MIN_VOLUME_USD)}")
     w("")
     w("Lifetime volume percentiles")

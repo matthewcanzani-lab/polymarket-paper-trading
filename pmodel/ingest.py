@@ -1,5 +1,6 @@
 """Pull data from a MarketSource into the market database."""
 import itertools
+import time
 
 from pmodel import config, db
 from pmodel.sources.base import MarketSource
@@ -13,6 +14,7 @@ def ingest_markets(source: MarketSource, conn, closed: bool, end_date_min=None,
     Closed markets also get an outcome row.
     """
     now = db.utc_now()
+    started = time.monotonic()
     stats = {"seen": 0, "stored": 0, "skipped_non_binary": 0, "resolved": 0, "ambiguous": 0}
     raws = source.iter_markets(closed=closed, end_date_min=end_date_min)
     if max_markets:
@@ -34,7 +36,8 @@ def ingest_markets(source: MarketSource, conn, closed: bool, end_date_min=None,
             db.insert_snapshot(conn, market, now)
         if stats["seen"] % 500 == 0:
             conn.commit()
-            log(f"  ...{stats['seen']} markets processed")
+            rate = stats["seen"] / max(time.monotonic() - started, 1e-9)
+            log(f"  ...{stats['seen']:,} markets processed ({rate:.0f}/s)")
     conn.commit()
     return stats
 

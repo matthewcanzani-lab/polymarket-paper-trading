@@ -5,6 +5,7 @@ to an explicit allowlist of public, read-only data hosts. There is deliberately
 no POST/PUT/DELETE function, so nothing in this codebase can submit an order,
 even by accident. A test (tests/test_safety.py) fails if anyone adds one.
 """
+import sys
 import time
 from urllib.parse import urlparse
 
@@ -36,15 +37,18 @@ def get_json(url, params=None, retries=4, timeout=30):
         time.sleep(config.REQUEST_PAUSE_SEC)
         try:
             resp = _session.get(url, params=params, timeout=timeout)
-        except requests.RequestException:
+        except requests.RequestException as exc:
             if attempt == retries:
                 raise
+            problem = type(exc).__name__
         else:
             if resp.status_code == 429 or resp.status_code >= 500:
                 if attempt == retries:
                     resp.raise_for_status()
+                problem = f"HTTP {resp.status_code}"
             else:
                 resp.raise_for_status()
                 return resp.json()
+        print(f"  [retry] {host}: {problem}, waiting {delay:.0f}s", file=sys.stderr, flush=True)
         time.sleep(delay)
         delay *= 2
