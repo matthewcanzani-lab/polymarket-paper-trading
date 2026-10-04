@@ -65,8 +65,10 @@ def test_keyset_pagination_follows_cursor(monkeypatch):
         return pages[params.get("after_cursor")]
 
     monkeypatch.setattr(polymarket.safe_http, "get_json", fake_get)
-    ids = [r["id"] for r in PolymarketSource().iter_markets(closed=True, end_date_min="2024-01-01")]
+    ids = [r["id"] for r in PolymarketSource().iter_markets(
+        closed=True, end_date_min="2024-01-01", volume_min=1000)]
     assert ids == ["1", "2", "3"]
+    assert calls[0]["volume_num_min"] == 1000
     assert len(calls) == 3
     assert calls[0]["closed"] == "true" and calls[0]["end_date_min"] == "2024-01-01"
     assert calls[0]["include_tag"] == "true"

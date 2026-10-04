@@ -54,8 +54,13 @@ class MarketSource(ABC):
     platform: str
 
     @abstractmethod
-    def iter_markets(self, closed: bool, end_date_min: Optional[str] = None) -> Iterator[dict]:
-        """Yield raw market records from the platform API."""
+    def iter_markets(self, closed: bool, end_date_min: Optional[str] = None,
+                     volume_min: Optional[float] = None) -> Iterator[dict]:
+        """Yield raw market records from the platform API.
+
+        end_date_min / volume_min let the platform filter server-side, so we don't
+        download hundreds of thousands of tiny markets we'd never use.
+        """
 
     @abstractmethod
     def parse_market(self, raw: dict) -> Optional[Market]:

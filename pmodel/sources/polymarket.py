@@ -103,7 +103,8 @@ def category_from_tags(labels: list[str], fallback: Optional[str] = None) -> Opt
 class PolymarketSource(MarketSource):
     platform = "polymarket"
 
-    def iter_markets(self, closed: bool, end_date_min: Optional[str] = None) -> Iterator[dict]:
+    def iter_markets(self, closed: bool, end_date_min: Optional[str] = None,
+                     volume_min: Optional[float] = None) -> Iterator[dict]:
         cursor = None
         while True:
             params = {"limit": PAGE_SIZE, "closed": str(closed).lower(), "include_tag": "true"}
@@ -111,6 +112,8 @@ class PolymarketSource(MarketSource):
                 params["active"] = "true"
             if end_date_min:
                 params["end_date_min"] = end_date_min
+            if volume_min:
+                params["volume_num_min"] = volume_min
             if cursor:
                 params["after_cursor"] = cursor
             page = safe_http.get_json(GAMMA_URL, params=params)

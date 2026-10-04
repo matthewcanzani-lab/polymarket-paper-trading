@@ -7,7 +7,7 @@ from pmodel.sources.base import MarketSource
 
 
 def ingest_markets(source: MarketSource, conn, closed: bool, end_date_min=None,
-                   max_markets=None, log=print) -> dict:
+                   volume_min=None, max_markets=None, log=print) -> dict:
     """Fetch active (closed=False) or resolved (closed=True) markets and store them.
 
     Active markets also get a snapshot row (price/volume as seen right now).
@@ -16,7 +16,7 @@ def ingest_markets(source: MarketSource, conn, closed: bool, end_date_min=None,
     now = db.utc_now()
     started = time.monotonic()
     stats = {"seen": 0, "stored": 0, "skipped_non_binary": 0, "resolved": 0, "ambiguous": 0}
-    raws = source.iter_markets(closed=closed, end_date_min=end_date_min)
+    raws = source.iter_markets(closed=closed, end_date_min=end_date_min, volume_min=volume_min)
     if max_markets:
         raws = itertools.islice(raws, max_markets)
     for raw in raws:

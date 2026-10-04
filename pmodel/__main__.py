@@ -9,15 +9,19 @@ def cmd_ingest_markets(args):
     source, conn = PolymarketSource(), db.connect()
     if args.which in ("active", "all"):
         print("Pulling ACTIVE markets...")
-        print("  ", _fmt(_ingest(source, conn, False, None, args.max)))
+        print("  ", _fmt(_ingest(source, conn, False, None, args.min_volume, args.max)))
     if args.which in ("resolved", "all"):
-        print(f"Pulling RESOLVED markets that ended on/after {config.HISTORY_START_DATE}...")
-        print("  ", _fmt(_ingest(source, conn, True, config.HISTORY_START_DATE, args.max)))
+        since = args.since or config.HISTORY_START_DATE
+        print(f"Pulling RESOLVED markets that ended on/after {since}...")
+        print("  ", _fmt(_ingest(source, conn, True, since, args.min_volume, args.max)))
 
 
-def _ingest(source, conn, closed, end_min, max_markets):
+def _ingest(source, conn, closed, end_min, volume_min, max_markets):
     from pmodel.ingest import ingest_markets
-    return ingest_markets(source, conn, closed=closed, end_date_min=end_min, max_markets=max_markets)
+    if volume_min:
+        print(f"  (only markets with volume >= ${volume_min:,.0f})")
+    return ingest_markets(source, conn, closed=closed, end_date_min=end_min,
+                          volume_min=volume_min, max_markets=max_markets)
 
 
 def _fmt(stats):
@@ -68,6 +72,9 @@ def main():
     s = sub.add_parser("ingest-markets", help="pull market listings + outcomes")
     s.add_argument("which", choices=["active", "resolved", "all"], nargs="?", default="all")
     s.add_argument("--max", type=int, help="stop after N markets (for a quick test)")
+    s.add_argument("--since", help="resolved markets: only those ending on/after this date "
+                                   "(default HISTORY_START_DATE); use a recent date for daily top-ups")
+    s.add_argument("--min-volume", type=float, help="skip markets below this lifetime volume (server-side)")
     s.set_defaults(func=cmd_ingest_markets)
 
     s = sub.add_parser("ingest-history", help="pull price history for resolved markets above the cutoff")

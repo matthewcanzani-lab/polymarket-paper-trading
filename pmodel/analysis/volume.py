@@ -35,9 +35,14 @@ def _pct(values, q):
     return values[lo] + (values[hi] - values[lo]) * (k - lo)
 
 
+def _is_short(row, hours=24):
+    return row["hours"] is not None and row["hours"] < hours
+
+
 def load(conn, platform="polymarket", now_s=None):
     resolved = conn.execute(
-        """SELECT m.volume_usd, o.resolved_yes, m.category, m.is_yes_no
+        """SELECT m.volume_usd, o.resolved_yes, m.category, m.is_yes_no, m.market_id,
+                  (julianday(m.end_date) - julianday(m.created_at)) * 24 AS hours
            FROM markets m JOIN outcomes o USING (platform, market_id)
            WHERE m.platform=? AND o.status='resolved'""", (platform,)).fetchall()
     ambiguous = conn.execute(
@@ -47,7 +52,8 @@ def load(conn, platform="polymarket", now_s=None):
     # their end date are just waiting for the oracle and can't be fairly bet.
     now_s = now_s or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     active = conn.execute(
-        """SELECT volume_usd, best_bid, best_ask, end_date, category
+        """SELECT volume_usd, best_bid, best_ask, end_date, category,
+                  (julianday(end_date) - julianday(created_at)) * 24 AS hours
            FROM markets WHERE platform=? AND closed=0 AND active=1
              AND (end_date IS NULL OR end_date >= ?)""", (platform, now_s)).fetchall()
     return resolved, ambiguous, active
@@ -93,8 +99,9 @@ def build_report(conn, platform="polymarket", now=None) -> str:
     w("  ending<30d = active markets resolving in the next 30 days (how fast bets settle)")
     w("  spread = median bid-ask gap on active markets, in cents (a cost on every fill)")
     w("  cats>=30 = categories with at least 30 resolved markets")
+    w("  short = share of kept resolved markets scheduled to last under 24 hours")
     w(f"  {'cutoff':>8}{'resolved':>10}{'kept':>7}{'YES%':>7}{'active':>8}{'ending<30d':>11}"
-      f"{'spread':>8}{'cats>=30':>9}")
+      f"{'spread':>8}{'cats>=30':>9}{'short':>7}")
     for c in CUTOFFS:
         r = [x for x in resolved if x["volume_usd"] >= c]
         a = [x for x in active if x["volume_usd"] >= c]
@@ -109,8 +116,22 @@ def build_report(conn, platform="polymarket", now=None) -> str:
             cats[x["category"] or "unknown"] = cats.get(x["category"] or "unknown", 0) + 1
         n_cats = sum(1 for k, v in cats.items() if v >= 30 and k != "unknown")
         kept = f"{len(r) / len(resolved) * 100:.0f}%" if resolved else "-"
+        short = f"{sum(_is_short(x) for x in r) / len(r) * 100:.0f}%" if r else "-"
         w(f"  {_money(c):>8}{len(r):>10,}{kept:>7}{yes:>6.0f}%{len(a):>8,}{ending:>11,}"
-          f"{spread:>8}{n_cats:>9}")
+          f"{spread:>8}{n_cats:>9}{short:>7}")
+    w("")
+    w("Resolved markets by category, at a few cutoffs (all lengths / excluding <24h markets)")
+    cats = sorted({x["category"] or "unknown" for x in resolved},
+                  key=lambda k: -sum(1 for x in resolved if (x["category"] or "unknown") == k))
+    picks = [1_000, 10_000, 50_000]
+    w(f"  {'category':16}" + "".join(f"{_money(c):>18}" for c in picks))
+    for cat in cats:
+        cells = ""
+        for c in picks:
+            rows = [x for x in resolved if (x["category"] or "unknown") == cat and x["volume_usd"] >= c]
+            long_ = sum(not _is_short(x) for x in rows)
+            cells += f"{len(rows):>10,} /{long_:>6,}"
+        w(f"  {cat:16}{cells}")
     unknown = sum(1 for x in resolved if not x["category"])
     if resolved:
         w("")
