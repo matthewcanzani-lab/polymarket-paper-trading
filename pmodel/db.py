@@ -45,6 +45,10 @@ CREATE TABLE IF NOT EXISTS markets (
     tags            TEXT,             -- JSON list of the platform's tag labels
     series          TEXT,
     recurrence      TEXT,
+    condition_id    TEXT,
+    trades_fetched_at TEXT,
+    trades_complete INTEGER,          -- 0 if the API capped how far back we could see
+    trades_earliest_ts INTEGER,
     first_seen_at   TEXT NOT NULL,
     last_updated_at TEXT NOT NULL,
     history_fetched_at TEXT,
@@ -82,6 +86,16 @@ CREATE TABLE IF NOT EXISTS outcomes (
     PRIMARY KEY (platform, market_id)
 );
 
+-- Dollars traded per UTC hour, so we can tell how much had traded BY any moment.
+CREATE TABLE IF NOT EXISTS trade_buckets (
+    platform  TEXT NOT NULL,
+    market_id TEXT NOT NULL,
+    hour_ts   INTEGER NOT NULL,
+    usd       REAL NOT NULL,
+    trades    INTEGER NOT NULL,
+    PRIMARY KEY (platform, market_id, hour_ts)
+);
+
 CREATE INDEX IF NOT EXISTS idx_markets_closed_volume ON markets (closed, volume_usd);
 """
 
@@ -102,7 +116,11 @@ def connect(path: Path = None) -> sqlite3.Connection:
 
 
 # Columns added after the first release. Older databases get them added in place.
-_ADDED_COLUMNS = {"markets": [("series", "TEXT"), ("recurrence", "TEXT")]}
+_ADDED_COLUMNS = {"markets": [
+    ("series", "TEXT"), ("recurrence", "TEXT"), ("condition_id", "TEXT"),
+    ("trades_fetched_at", "TEXT"), ("trades_complete", "INTEGER"),
+    ("trades_earliest_ts", "INTEGER"),
+]}
 
 
 def _migrate(conn):
@@ -126,11 +144,12 @@ def upsert_market(conn, m: Market, now: str) -> None:
         INSERT INTO markets (platform, market_id, question, slug, category, event_title,
             outcome_yes, outcome_no, is_yes_no, yes_token_id, created_at, start_date,
             end_date, closed_time, active, closed, volume_usd, liquidity_usd, yes_price,
-            best_bid, best_ask, tags, series, recurrence, first_seen_at, last_updated_at)
+            best_bid, best_ask, tags, series, recurrence, condition_id, first_seen_at,
+            last_updated_at)
         VALUES (:platform, :market_id, :question, :slug, :category, :event_title,
             :outcome_yes, :outcome_no, :is_yes_no, :yes_token_id, :created_at, :start_date,
             :end_date, :closed_time, :active, :closed, :volume_usd, :liquidity_usd, :yes_price,
-            :best_bid, :best_ask, :tags, :series, :recurrence, :now, :now)
+            :best_bid, :best_ask, :tags, :series, :recurrence, :condition_id, :now, :now)
         ON CONFLICT (platform, market_id) DO UPDATE SET
             question=excluded.question, slug=excluded.slug, category=excluded.category,
             event_title=excluded.event_title, outcome_yes=excluded.outcome_yes,
@@ -141,7 +160,8 @@ def upsert_market(conn, m: Market, now: str) -> None:
             volume_usd=excluded.volume_usd, liquidity_usd=excluded.liquidity_usd,
             yes_price=excluded.yes_price, best_bid=excluded.best_bid,
             best_ask=excluded.best_ask, tags=excluded.tags, series=excluded.series,
-            recurrence=excluded.recurrence, last_updated_at=excluded.last_updated_at
+            recurrence=excluded.recurrence,
+            condition_id=COALESCE(excluded.condition_id, markets.condition_id), last_updated_at=excluded.last_updated_at
         """,
         row,
     )
@@ -179,7 +199,19 @@ def save_price_history(conn, platform: str, market_id: str, points: list[PricePo
 
 
 def market_from_row(row) -> Market:
-    fields = {k: row[k] for k in Market.__dataclass_fields__ if k != "tags"}
+    keys = set(row.keys())
+    fields = {k: row[k] for k in Market.__dataclass_fields__ if k != "tags" and k in keys}
     for k in ("is_yes_no", "active", "closed"):
         fields[k] = bool(fields[k])
     return Market(**fields, tags=json.loads(row["tags"] or "[]"))
+
+
+def save_trade_history(conn, platform: str, market_id: str, history, now: str) -> None:
+    conn.execute("DELETE FROM trade_buckets WHERE platform=? AND market_id=?", (platform, market_id))
+    conn.executemany(
+        "INSERT INTO trade_buckets VALUES (?,?,?,?,?)",
+        [(platform, market_id, b.hour_ts, b.usd, b.trades) for b in history.buckets])
+    conn.execute(
+        """UPDATE markets SET trades_fetched_at=?, trades_complete=?, trades_earliest_ts=?
+           WHERE platform=? AND market_id=?""",
+        (now, int(history.complete), history.earliest_ts, platform, market_id))

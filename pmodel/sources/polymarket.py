@@ -8,10 +8,15 @@ from datetime import datetime, timezone
 from typing import Iterator, Optional
 
 from pmodel import config, safe_http
-from pmodel.sources.base import Market, MarketSource, PricePoint, Resolution
+from pmodel.sources.base import (Market, MarketSource, PricePoint, Resolution, TradeBucket,
+                                 TradeHistory)
 
 GAMMA_URL = "https://gamma-api.polymarket.com/markets/keyset"  # cursor paging (plain /markets caps the offset)
 PRICES_URL = "https://clob.polymarket.com/prices-history"
+TRADES_URL = "https://data-api.polymarket.com/trades"
+MARKETS_BY_ID_URL = "https://gamma-api.polymarket.com/markets"
+TRADES_PAGE = 500
+TRADES_MAX_OFFSET = 10_000  # the Data API refuses deeper pages (newest trades come first)
 PAGE_SIZE = 100  # the API's maximum page size
 
 # Price history quirks (checked against the live API, Oct 2026):
@@ -157,6 +162,7 @@ class PolymarketSource(MarketSource):
             tags=tag_labels(raw),
             series=_series(raw)[0],
             recurrence=_series(raw)[1],
+            condition_id=raw.get("conditionId"),
             event_title=events[0].get("title") if events else None,
             outcome_yes=str(outcomes[0]),
             outcome_no=str(outcomes[1]),
@@ -219,6 +225,39 @@ class PolymarketSource(MarketSource):
         data = safe_http.get_json(PRICES_URL, params={
             "market": market.yes_token_id, "interval": "max", "fidelity": COARSE_FIDELITY_MIN})
         return _parse_history(data)
+
+    def trade_history(self, market: Market) -> TradeHistory:
+        buckets, earliest, complete = {}, None, True
+        offset = 0
+        while True:
+            page = safe_http.get_json(TRADES_URL, params={
+                "market": market.condition_id, "limit": TRADES_PAGE, "offset": offset})
+            if not isinstance(page, list) or not page:
+                break
+            for t in page:
+                ts = int(t["timestamp"])
+                hour = ts - ts % 3600
+                usd, n = buckets.get(hour, (0.0, 0))
+                buckets[hour] = (usd + float(t["size"]) * float(t["price"]), n + 1)
+                earliest = ts if earliest is None else min(earliest, ts)
+            if len(page) < TRADES_PAGE:
+                break
+            offset += TRADES_PAGE
+            if offset > TRADES_MAX_OFFSET:
+                complete = False  # older trades exist but the API won't return them
+                break
+        return TradeHistory([TradeBucket(h, u, n) for h, (u, n) in sorted(buckets.items())],
+                            complete, earliest)
+
+    def condition_ids(self, market_ids: list[str]) -> dict:
+        """Look up conditionIds for up to 100 market IDs in one request."""
+        params = [("id", m) for m in market_ids] + [("closed", "true"), ("limit", len(market_ids))]
+        found = {}
+        for closed in ("true", "false"):
+            params[-2] = ("closed", closed)
+            for raw in safe_http.get_json(MARKETS_BY_ID_URL, params=params) or []:
+                found[str(raw["id"])] = raw.get("conditionId")
+        return found
 
     def history_step_seconds(self, market: Market) -> int:
         return 3600 if _hourly(market) else COARSE_FIDELITY_MIN * 60

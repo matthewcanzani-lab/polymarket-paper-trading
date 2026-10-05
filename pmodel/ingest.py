@@ -87,3 +87,46 @@ def ingest_price_history(source: MarketSource, conn, limit=None, refetch=False,
                 log(f"  ...{i:,}/{len(rows):,} ({rate:.1f} markets/s)")
     conn.commit()
     return stats
+
+
+def backfill_condition_ids(source: MarketSource, conn, log=print) -> int:
+    """Fill in condition IDs for markets that have price history but no condition ID."""
+    ids = [r[0] for r in conn.execute(
+        "SELECT market_id FROM markets WHERE platform=? AND condition_id IS NULL "
+        "AND history_fetched_at IS NOT NULL", (source.platform,))]
+    log(f"Looking up condition IDs for {len(ids):,} markets")
+    done = 0
+    for i in range(0, len(ids), 100):
+        found = source.condition_ids(ids[i:i + 100])
+        conn.executemany("UPDATE markets SET condition_id=? WHERE platform=? AND market_id=?",
+                         [(cid, source.platform, mid) for mid, cid in found.items() if cid])
+        done += len(found)
+        if (i // 100) % 50 == 0:
+            conn.commit()
+            log(f"  ...{i + 100:,}")
+    conn.commit()
+    return done
+
+
+def ingest_trades(source: MarketSource, conn, limit=None, workers=8, log=print) -> dict:
+    """Hourly traded-dollar history for markets that already have price history."""
+    sql = """SELECT * FROM markets WHERE platform=? AND history_fetched_at IS NOT NULL
+             AND condition_id IS NOT NULL AND trades_fetched_at IS NULL
+             ORDER BY (CAST(market_id AS INTEGER) * 2654435761) % 1000003, market_id"""
+    if limit:
+        sql += f" LIMIT {int(limit)}"
+    markets = [db.market_from_row(r) for r in conn.execute(sql, (source.platform,))]
+    log(f"Fetching trade history for {len(markets):,} markets")
+    stats = {"markets": 0, "capped": 0, "no_trades": 0}
+    started = time.monotonic()
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        for i, (m, hist) in enumerate(zip(markets, pool.map(source.trade_history, markets)), 1):
+            db.save_trade_history(conn, m.platform, m.market_id, hist, db.utc_now())
+            stats["markets"] += 1
+            stats["capped"] += not hist.complete
+            stats["no_trades"] += not hist.buckets
+            if i % 500 == 0:
+                conn.commit()
+                log(f"  ...{i:,}/{len(markets):,} ({i / (time.monotonic() - started):.1f}/s)")
+    conn.commit()
+    return stats

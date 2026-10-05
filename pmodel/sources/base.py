@@ -35,6 +35,7 @@ class Market:
     tags: list = field(default_factory=list)  # raw platform tags, for later analysis
     series: Optional[str] = None              # recurring series this market belongs to, if any
     recurrence: Optional[str] = None          # how often that series repeats, e.g. "5m", "daily"
+    condition_id: Optional[str] = None        # platform ID used to look up trades
 
 
 @dataclass
@@ -44,6 +45,20 @@ class Resolution:
     resolved_yes: Optional[int]  # 1 = YES won, 0 = NO won, None = unclear/void
     status: str                  # "resolved" or "ambiguous"
     resolved_at: Optional[str]
+
+
+@dataclass
+class TradeBucket:
+    hour_ts: int    # start of the UTC hour (unix seconds)
+    usd: float      # sum of size * price of trades in that hour
+    trades: int
+
+
+@dataclass
+class TradeHistory:
+    buckets: list           # list[TradeBucket], oldest first
+    complete: bool          # False if the platform stopped returning older trades
+    earliest_ts: Optional[int]  # earliest trade we actually saw
 
 
 @dataclass
@@ -75,6 +90,10 @@ class MarketSource(ABC):
     @abstractmethod
     def price_history(self, market: Market) -> list[PricePoint]:
         """Return the YES price history for a market, oldest first."""
+
+    @abstractmethod
+    def trade_history(self, market: Market) -> TradeHistory:
+        """Hourly traded-dollar totals, so we can tell how much had traded BY a moment."""
 
     @abstractmethod
     def history_step_seconds(self, market: Market) -> int:

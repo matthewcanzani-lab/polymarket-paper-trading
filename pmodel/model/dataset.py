@@ -11,6 +11,17 @@ closed — the live scorer likewise only ever sees open markets. It is never a
 feature. Each market's snapshots share a total weight of 1, so long markets
 with many snapshots don't count more than short ones.
 
+VOLUME-AT-THE-TIME GUARD: a snapshot is kept only if the market had already
+reached MIN_VOLUME_USD *by time t* — what a live bettor could check. Selecting
+on FINAL volume leaked the outcome (upsets attract late trading, so high final
+volume over-represents upsets). Gamma's volume and the trades API count dollars
+differently (~2:1), so volume-by-t is estimated as
+    final_volume * (dollars traded before t / dollars traded in total)
+which can never exceed the final volume — so "big enough at t" already implies
+"big enough at the end", and the final number adds no extra information.
+For the ~0.5% of markets where the API capped how far back trades go, that
+fraction is a lower bound (we under-count early trading), which is conservative.
+
 SURVIVORSHIP GUARD: we can only label markets that have resolved. Near the end
 of the data, a long-dated market is only present if it ended EARLY (often
 because the event happened), which would skew recent data toward YES. So a
@@ -22,8 +33,9 @@ from datetime import datetime, timedelta
 import numpy as np
 import pandas as pd
 
-from pmodel import universe
-from pmodel.model.features import FEATURE_NAMES, features_at, iso_to_unix, static_info
+from pmodel import config, universe
+from pmodel.model.features import (FEATURE_NAMES, features_at, iso_to_unix, static_info,
+                                   traded_before)
 
 H = 3600
 RESOLUTION_LAG_DAYS = 7
@@ -67,13 +79,26 @@ def build(conn, source, platform="polymarket", log=print) -> pd.DataFrame:
             continue
         ts = np.fromiter((h[0] for h in hist), dtype=np.int64, count=len(hist))
         ps = np.fromiter((h[1] for h in hist), dtype=np.float64, count=len(hist))
+        tr = conn.execute(
+            "SELECT hour_ts, usd, trades FROM trade_buckets WHERE platform=? AND market_id=? "
+            "ORDER BY hour_ts", (platform, row["market_id"])).fetchall()
+        if row["trades_fetched_at"] is None or not tr:
+            continue
+        trades = (np.array([r[0] for r in tr], dtype=np.int64),
+                  np.array([r[1] for r in tr]), np.array([r[2] for r in tr], dtype=np.float64))
+        total_seen = trades[1].sum()
         step = source.history_step_seconds(market_from_row(row))
         info = static_info(row)
         created, end = iso_to_unix(row["created_at"]), iso_to_unix(row["end_date"])
         closed = iso_to_unix(row["closed_time"]) or iso_to_unix(row["resolved_at"])
         snaps = []
         for t in snapshot_times(created, end, closed):
-            f = features_at(info, ts, ps, t, step)
+            if not row["trades_complete"] and t < (row["trades_earliest_ts"] or 0) + 24 * H:
+                continue  # can't see this market's trading that far back
+            before, _, _ = traded_before(trades, t)
+            if row["volume_usd"] * before / total_seen < config.MIN_VOLUME_USD:
+                continue  # not yet liquid enough at t to be in the betting universe
+            f = features_at(info, ts, ps, t, step, trades)
             if f is not None:
                 snaps.append((t, f))
         for t, f in snaps:

@@ -20,16 +20,28 @@ def history(step=H, days=31, seed=0):
     return ts, rng.uniform(0.05, 0.95, size=ts.size)
 
 
+def trades(seed=0):
+    rng = np.random.default_rng(seed)
+    hours = np.arange(T0, T0 + 31 * 86400, H, dtype=np.int64)
+    return hours, rng.uniform(0, 500, hours.size), rng.integers(0, 20, hours.size).astype(float)
+
+
 @pytest.mark.parametrize("step", [H, 12 * H])
 def test_features_ignore_everything_after_cutoff(step):
     ts, ps = history(step)
+    tr = trades()
     t = T0 + 10 * 86400 + 1234
-    before = features.features_at(INFO, ts, ps, t, step)
+    before = features.features_at(INFO, ts, ps, t, step, tr)
     scrambled = ps.copy()
     future = ts + step > t                     # points not yet knowable at t
     scrambled[future] = 1 - scrambled[future]  # change the future completely
-    after = features.features_at(INFO, ts, scrambled, t, step)
+    tr2 = (tr[0], tr[1].copy(), tr[2].copy())
+    unfinished = tr[0] + H > t                 # trade hours not finished at t
+    tr2[1][unfinished] *= 100
+    tr2[2][unfinished] += 1000
+    after = features.features_at(INFO, ts, scrambled, t, step, tr2)
     assert before == pytest.approx(after, nan_ok=True)
+    assert before["log_traded_usd"] > 0
 
 
 def test_point_is_only_known_after_its_bucket_closes():
@@ -51,7 +63,7 @@ def test_forbidden_fields_never_reach_features():
 
 def test_feature_names_match():
     ts, ps = history()
-    f = features.features_at(INFO, ts, ps, T0 + 5 * 86400, H)
+    f = features.features_at(INFO, ts, ps, T0 + 5 * 86400, H, trades())
     assert list(f) == features.FEATURE_NAMES
 
 

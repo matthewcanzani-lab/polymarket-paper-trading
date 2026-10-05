@@ -46,6 +46,13 @@ def cmd_volume_report(args):
     print(f"\nSaved {config.REPORTS_DIR / 'volume_report.txt'} and {chart}")
 
 
+def cmd_ingest_trades(args):
+    from pmodel.ingest import backfill_condition_ids, ingest_trades
+    source, conn = PolymarketSource(), db.connect()
+    backfill_condition_ids(source, conn)
+    print("  ", _fmt(ingest_trades(source, conn, limit=args.limit, workers=args.workers)))
+
+
 def cmd_train(args):
     from pmodel.model import dataset, train
     conn = db.connect()
@@ -95,6 +102,11 @@ def main():
     s = sub.add_parser("volume-report", help="show volume distribution to pick a cutoff")
     s.add_argument("--note", help="caveat text to print on the chart")
     s.set_defaults(func=cmd_volume_report)
+    s = sub.add_parser("ingest-trades", help="hourly traded-$ history for markets with price history")
+    s.add_argument("--limit", type=int)
+    s.add_argument("--workers", type=int, default=8)
+    s.set_defaults(func=cmd_ingest_trades)
+
     sub.add_parser("train", help="train + backtest a new model version (saved under models/)").set_defaults(func=cmd_train)
     sub.add_parser("status", help="row counts in the market database").set_defaults(func=cmd_status)
     sub.add_parser("backup", help="copy the prediction log to BACKUP_DIR").set_defaults(func=cmd_backup)

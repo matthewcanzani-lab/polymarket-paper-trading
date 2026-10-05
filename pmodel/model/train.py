@@ -101,6 +101,7 @@ def run(df, log=print):
     by_cat = evaluate.breakdown(test, p_test, "category")
     by_hz = evaluate.breakdown(hz, p_test, "horizon")
     disagree = evaluate.disagreement(test, p_test)
+    ci = evaluate.bootstrap_ci(test, p_test)
 
     version = datetime.now(timezone.utc).strftime("v%Y%m%d_%H%M%S")
     out = MODELS_DIR / version
@@ -125,6 +126,7 @@ def run(df, log=print):
                   "test_markets": int(test["market_id"].nunique())},
         "test_metrics": summ,
         "test_disagreement_over_5pts": disagree,
+        "test_bootstrap": ci,
         "feature_importance_gain": dict(sorted(importance.items(), key=lambda kv: -kv[1])),
     }
     (out / "meta.json").write_text(json.dumps(meta, indent=2))
@@ -159,6 +161,12 @@ def _report(meta, cal_model, cal_market, by_cat, by_hz):
         f"{m['max_cal_gap_market_pts']:>14.1f}p",
         f"{'Win rate (>=50% calls)':28}{m['win_rate_model']*100:>9.1f}%",
         "",
+        "Is the model really better than the market? (resampling markets 1,000 times)",
+        f"  Brier difference model - market: {meta['test_bootstrap']['brier_diff_model_minus_market']:+.5f}"
+        f"  (95% range {meta['test_bootstrap']['brier_diff_ci95'][0]:+.5f} to "
+        f"{meta['test_bootstrap']['brier_diff_ci95'][1]:+.5f}; below 0 = model better)",
+        f"  model better in {meta['test_bootstrap']['share_of_draws_model_better']*100:.0f}% of resamples",
+        "",
         "Calibration — when the forecast says X%, how often did YES happen?",
         f"  {'band':>9}{'model says':>12}{'happened':>10}{'markets':>9}   |"
         f"{'market says':>12}{'happened':>10}",
@@ -184,6 +192,9 @@ def _report(meta, cal_model, cal_market, by_cat, by_hz):
                   f"  model closer to the outcome: {d['model_closer_share']*100:.1f}% of the time",
                   f"  avg return per $1 if bet at market price, BEFORE slippage: "
                   f"{d['avg_return_per_dollar_before_slippage']*100:+.1f}%"]
+        r = meta["test_bootstrap"].get("disagree_return_ci95")
+        if r:
+            lines.append(f"  95% range for that return: {r[0]*100:+.1f}% to {r[1]*100:+.1f}%")
     else:
         lines.append("  none")
     lines += ["", "Top features (gain):"]

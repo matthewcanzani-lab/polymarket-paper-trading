@@ -13,9 +13,12 @@ HOW LOOK-AHEAD IS PREVENTED (read this before changing anything here)
    knowable only from `ts + step`. At prediction time `t` we use only points
    with `ts + step <= t`.
 
-3. Tested. tests/test_features.py scrambles every price after the cutoff and
-   checks that the features don't change, and checks that forbidden market
-   fields never reach this module.
+3. Trading activity the same way: an hourly bucket of trades [h, h+1h) is only
+   known from h+1h. We never use the market's final volume.
+
+4. Tested. tests/test_features.py scrambles every price and trade after the
+   cutoff and checks that the features don't change, and checks that forbidden
+   market fields never reach this module.
 
 Snapshot selection (which moments we sample) lives in dataset.py and is
 allowed to use the close time — only to make sure the market was still open
@@ -38,6 +41,7 @@ FEATURE_NAMES = [
     "max_7d", "min_7d", "vol_7d",
     "hours_to_end", "log_hours_to_end", "age_h", "frac_elapsed", "scheduled_days",
     "is_yes_no",
+    "log_traded_usd", "log_usd_24h", "trades_24h",
 ] + [f"cat_{c}" for c in CATEGORIES] + ["cat_other"]
 
 H = 3600
@@ -68,10 +72,22 @@ def _price_before(ts, ps, cutoff):
     return (float(ps[i]), int(ts[i])) if i >= 0 else (None, None)
 
 
-def features_at(info: dict, ts: np.ndarray, ps: np.ndarray, t: int, step: int):
+def traded_before(trades, t):
+    """(dollars traded before t, dollars in the 24h before t, trades in the 24h before t).
+
+    trades = (hour_ts, usd, count) arrays, sorted. Only fully finished hours count.
+    """
+    hour_ts, usd, cnt = trades
+    done = hour_ts + H <= t
+    recent = done & (hour_ts + H > t - 24 * H)
+    return float(usd[done].sum()), float(usd[recent].sum()), float(cnt[recent].sum())
+
+
+def features_at(info: dict, ts: np.ndarray, ps: np.ndarray, t: int, step: int, trades=None):
     """Feature dict for predicting at unix time `t`, or None if no usable price yet.
 
-    info: output of static_info(); ts/ps: price history (sorted); step: bucket size.
+    info: output of static_info(); ts/ps: price history (sorted); step: bucket size;
+    trades: optional (hour_ts, usd, count) arrays of hourly trading activity.
     """
     # Shift every point to the moment it became knowable, then never look past t.
     known_ts = ts + step
@@ -109,6 +125,11 @@ def features_at(info: dict, ts: np.ndarray, ps: np.ndarray, t: int, step: int):
         "scheduled_days": sched / 24 if sched == sched else np.nan,
         "is_yes_no": float(bool(info["is_yes_no"])),
     }
+    if trades is not None:
+        total, usd24, n24 = traded_before(trades, t)
+        f.update(log_traded_usd=math.log1p(total), log_usd_24h=math.log1p(usd24), trades_24h=n24)
+    else:
+        f.update(log_traded_usd=np.nan, log_usd_24h=np.nan, trades_24h=np.nan)
     cat = info.get("category")
     for c in CATEGORIES:
         f[f"cat_{c}"] = float(cat == c)
