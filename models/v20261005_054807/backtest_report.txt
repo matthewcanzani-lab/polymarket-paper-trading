@@ -1,0 +1,61 @@
+MODEL v20261005_054807 — BACKTEST RESULTS (historical, not forward paper trading)
+==============================================================================
+Test period: predictions made from 2026-06-08 19:00 UTC
+Test set: 4,101 markets / 8,155 snapshots (metrics weight each market equally)
+
+                                 model   market price
+Brier score (lower=better)      0.1283         0.1283
+Log loss (lower=better)         0.3816         0.3816
+Worst calibration gap             4.9p           5.1p
+Win rate (>=50% calls)           79.9%
+
+Is the model really better than the market? (resampling markets 1,000 times)
+  Brier difference model - market: +0.00000  (95% range -0.00003 to +0.00003; below 0 = model better)
+  model better in 49% of resamples
+
+Calibration — when the forecast says X%, how often did YES happen?
+       band  model says  happened  markets   | market says  happened
+      0-10%        1.8%      1.9%     1437   |        1.8%      1.9%
+     10-20%       14.4%     15.5%      265   |       14.4%     15.3%
+     20-30%       25.2%     26.2%      257   |       25.2%     26.1%
+     30-40%       35.3%     35.9%      324   |       35.3%     35.9%
+     40-50%       45.3%     43.2%      498   |       45.2%     43.3%
+     50-60%       54.3%     54.5%      477   |       54.2%     54.3%
+     60-70%       64.9%     67.0%      252   |       64.8%     67.0%
+     70-80%       74.7%     79.6%      162   |       74.7%     79.8%
+     80-90%       84.4%     87.4%      110   |       84.4%     87.5%
+    90-100%       97.9%     99.0%      275   |       97.9%     99.0%
+
+Brier by category (model vs market)
+  Sports            1,784 mkts  0.1746 vs 0.1746  (market better)
+  Esports             567 mkts  0.1994 vs 0.1995  (model better)
+  Crypto              550 mkts  0.0485 vs 0.0485  (model better)
+  Weather             532 mkts  0.0667 vs 0.0668  (model better)
+  Politics            359 mkts  0.0545 vs 0.0546  (model better)
+  Economy             113 mkts  0.0574 vs 0.0574  (market better)
+  Culture              76 mkts  0.0587 vs 0.0589  (model better)
+  Geopolitics          62 mkts  0.0597 vs 0.0596  (market better)
+  Tech & Science       50 mkts  0.0324 vs 0.0324  (market better)
+  unknown               8 mkts  0.1532 vs 0.1531  (market better)
+
+Brier by time left until scheduled end
+  <1 day            3,484 mkts  0.1240 vs 0.1240
+  1-3 days            849 mkts  0.0897 vs 0.0897
+  3-7 days          1,114 mkts  0.1738 vs 0.1737
+  7-30 days           490 mkts  0.0952 vs 0.0952
+  >30 days             46 mkts  0.1091 vs 0.1089
+
+Where model and market disagree by more than 5 points (Phase 3 preview)
+  none
+
+Top features (gain):
+  log_usd_24h               7.15
+  is_yes_no                 6.01
+  log_hours_to_end          5.65
+  log_traded_usd            5.20
+  staleness_h               4.44
+  frac_elapsed              4.42
+  vol_7d                    3.96
+  max_7d                    3.96
+  dist_from_half            3.85
+  chg_3d                    3.70

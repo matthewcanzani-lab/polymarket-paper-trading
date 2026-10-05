@@ -15,7 +15,7 @@ build an honest, forward-tested track record.
 | Phase | What | Status |
 |---|---|---|
 | 1 | Data: markets, price history, outcomes in SQLite; volume report | **done** |
-| 2 | Model: XGBoost, no look-ahead, time-based split, calibration + Brier | not started |
+| 2 | Model: XGBoost, no look-ahead, time-based split, calibration + Brier | **done — no edge found yet** |
 | 3 | Paper trading log: edges > 5 pts, quarter Kelly, slippage, auto-settle, append-only | not started |
 | 4 | Flask dashboard | not started |
 | 5 | Automation: scheduled scoring, retrain every ~50 resolutions | not started |
@@ -101,6 +101,40 @@ markets only return hourly data in windows of <= 14 days, so markets that lived
 Running `ingest-markets active` again later adds a new *snapshot* of every active
 market, so over time we build our own record of what prices and volumes looked
 like at each moment.
+
+## Phase 2: the model
+
+```bash
+python -m pmodel ingest-trades      # hourly traded-$ per market (needed for volume-at-the-time)
+python -m pmodel train              # builds snapshots, trains, backtests, saves models/<version>/
+```
+
+Each version folder has `model.json`, `meta.json` (settings, split dates,
+metrics), `backtest_report.txt` and `calibration.png`. Everything there is a
+**BACKTEST** (historical, out-of-sample by time), never forward paper results.
+
+**How look-ahead bias is prevented** (details in `pmodel/model/features.py`,
+`dataset.py`, `train.py`):
+1. Features only see an allowlist of facts known when a market opens
+   (category, creation date, scheduled end, Yes/No type). Final volume, close
+   time, final prices and the outcome are never passed in.
+2. Prices and trades are used only once their time bucket has fully finished
+   before the prediction moment.
+3. A market is only sampled at moments when it was still open AND had already
+   reached $10k of volume *by then* (selecting on final volume leaked outcomes —
+   see `models/v20261005_031649/SUPERSEDED.md`).
+4. Hourly-vs-12h price data is chosen from the *scheduled* length, not the actual one.
+5. Only markets scheduled to end 7+ days before the data pull are used, so
+   early-resolving markets aren't over-represented at the recent end.
+6. Time split: train only on markets resolved before the validation period;
+   test on the most recent ~20% of predictions.
+7. `tests/test_features.py` scrambles all future prices/trades and checks
+   features don't change.
+
+**Result (v20261005_054807, 4,101 test markets, Jun–Sep 2026):** model Brier
+0.1283 = market 0.1283; XGBoost found no correction that helped on validation.
+Polymarket prices in this universe are already well calibrated, and price/
+volume history alone doesn't beat them.
 
 ## Where the data lives — and why there are two databases
 
