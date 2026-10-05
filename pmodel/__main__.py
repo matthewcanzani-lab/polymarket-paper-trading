@@ -46,6 +46,13 @@ def cmd_volume_report(args):
     print(f"\nSaved {config.REPORTS_DIR / 'volume_report.txt'} and {chart}")
 
 
+def cmd_train(args):
+    from pmodel.model import dataset, train
+    conn = db.connect()
+    df = dataset.build(conn, PolymarketSource())
+    train.run(df)
+
+
 def cmd_status(args):
     conn = db.connect()
     q = lambda sql: conn.execute(sql).fetchone()[0]
@@ -88,6 +95,7 @@ def main():
     s = sub.add_parser("volume-report", help="show volume distribution to pick a cutoff")
     s.add_argument("--note", help="caveat text to print on the chart")
     s.set_defaults(func=cmd_volume_report)
+    sub.add_parser("train", help="train + backtest a new model version (saved under models/)").set_defaults(func=cmd_train)
     sub.add_parser("status", help="row counts in the market database").set_defaults(func=cmd_status)
     sub.add_parser("backup", help="copy the prediction log to BACKUP_DIR").set_defaults(func=cmd_backup)
 

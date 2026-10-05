@@ -75,3 +75,8 @@ class MarketSource(ABC):
     @abstractmethod
     def price_history(self, market: Market) -> list[PricePoint]:
         """Return the YES price history for a market, oldest first."""
+
+    @abstractmethod
+    def history_step_seconds(self, market: Market) -> int:
+        """Spacing between price points for this market. Features treat a point
+        stamped `ts` as only knowable at `ts + step` (it may summarise that bucket)."""

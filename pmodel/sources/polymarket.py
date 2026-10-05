@@ -201,11 +201,7 @@ class PolymarketSource(MarketSource):
             return []
         start = _iso_to_unix(market.created_at or market.start_date)
         scheduled_end = _iso_to_unix(market.end_date)
-        # LOOK-AHEAD GUARD: choose the granularity from the SCHEDULED length, which is
-        # known when the market opens. Using the actual close time would make "hourly
-        # data" a hint that the market closed early (often meaning it resolved YES early).
-        hourly = bool(start and scheduled_end
-                      and 0 < scheduled_end - start <= config.HOURLY_MAX_DAYS * 86400)
+        hourly = self.history_step_seconds(market) == 3600
         # How far to fetch doesn't leak anything (features only use points before the
         # prediction time), so cover the full span the market actually traded.
         end = max(filter(None, [scheduled_end, _iso_to_unix(market.closed_time)]), default=None)
@@ -223,6 +219,19 @@ class PolymarketSource(MarketSource):
         data = safe_http.get_json(PRICES_URL, params={
             "market": market.yes_token_id, "interval": "max", "fidelity": COARSE_FIDELITY_MIN})
         return _parse_history(data)
+
+    def history_step_seconds(self, market: Market) -> int:
+        return 3600 if _hourly(market) else COARSE_FIDELITY_MIN * 60
+
+
+def _hourly(market: Market) -> bool:
+    # LOOK-AHEAD GUARD: choose the granularity from the SCHEDULED length, which is
+    # known when the market opens. Using the actual close time would make "hourly
+    # data" a hint that the market closed early (often meaning it resolved YES early).
+    start = _iso_to_unix(market.created_at or market.start_date)
+    scheduled_end = _iso_to_unix(market.end_date)
+    return bool(start and scheduled_end
+                and 0 < scheduled_end - start <= config.HOURLY_MAX_DAYS * 86400)
 
 
 def _parse_history(data) -> list[PricePoint]:
