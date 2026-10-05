@@ -43,6 +43,8 @@ CREATE TABLE IF NOT EXISTS markets (
     best_bid        REAL,
     best_ask        REAL,
     tags            TEXT,             -- JSON list of the platform's tag labels
+    series          TEXT,
+    recurrence      TEXT,
     first_seen_at   TEXT NOT NULL,
     last_updated_at TEXT NOT NULL,
     history_fetched_at TEXT,
@@ -95,7 +97,21 @@ def connect(path: Path = None) -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.executescript(SCHEMA)
+    _migrate(conn)
     return conn
+
+
+# Columns added after the first release. Older databases get them added in place.
+_ADDED_COLUMNS = {"markets": [("series", "TEXT"), ("recurrence", "TEXT")]}
+
+
+def _migrate(conn):
+    for table, columns in _ADDED_COLUMNS.items():
+        existing = {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
+        for name, sqltype in columns:
+            if name not in existing:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {sqltype}")
+    conn.commit()
 
 
 def upsert_market(conn, m: Market, now: str) -> None:
@@ -110,11 +126,11 @@ def upsert_market(conn, m: Market, now: str) -> None:
         INSERT INTO markets (platform, market_id, question, slug, category, event_title,
             outcome_yes, outcome_no, is_yes_no, yes_token_id, created_at, start_date,
             end_date, closed_time, active, closed, volume_usd, liquidity_usd, yes_price,
-            best_bid, best_ask, tags, first_seen_at, last_updated_at)
+            best_bid, best_ask, tags, series, recurrence, first_seen_at, last_updated_at)
         VALUES (:platform, :market_id, :question, :slug, :category, :event_title,
             :outcome_yes, :outcome_no, :is_yes_no, :yes_token_id, :created_at, :start_date,
             :end_date, :closed_time, :active, :closed, :volume_usd, :liquidity_usd, :yes_price,
-            :best_bid, :best_ask, :tags, :now, :now)
+            :best_bid, :best_ask, :tags, :series, :recurrence, :now, :now)
         ON CONFLICT (platform, market_id) DO UPDATE SET
             question=excluded.question, slug=excluded.slug, category=excluded.category,
             event_title=excluded.event_title, outcome_yes=excluded.outcome_yes,
@@ -124,7 +140,8 @@ def upsert_market(conn, m: Market, now: str) -> None:
             closed_time=excluded.closed_time, active=excluded.active, closed=excluded.closed,
             volume_usd=excluded.volume_usd, liquidity_usd=excluded.liquidity_usd,
             yes_price=excluded.yes_price, best_bid=excluded.best_bid,
-            best_ask=excluded.best_ask, tags=excluded.tags, last_updated_at=excluded.last_updated_at
+            best_ask=excluded.best_ask, tags=excluded.tags, series=excluded.series,
+            recurrence=excluded.recurrence, last_updated_at=excluded.last_updated_at
         """,
         row,
     )

@@ -92,6 +92,17 @@ def tag_labels(raw: dict) -> list[str]:
     return sorted(set(labels))
 
 
+def _series(raw: dict):
+    """(series slug, recurrence) for markets in a recurring series like 'btc-up-or-down-5m'."""
+    for event in raw.get("events") or []:
+        for series in event.get("series") or []:
+            if isinstance(series, dict) and series.get("slug"):
+                return series["slug"], series.get("recurrence")
+        if event.get("seriesSlug"):
+            return event["seriesSlug"], None
+    return None, None
+
+
 def category_from_tags(labels: list[str], fallback: Optional[str] = None) -> Optional[str]:
     lowered = {label.lower() for label in labels}
     for category, keys in CATEGORY_TAGS:
@@ -144,6 +155,8 @@ class PolymarketSource(MarketSource):
             slug=raw.get("slug"),
             category=category_from_tags(tag_labels(raw), raw.get("category")),
             tags=tag_labels(raw),
+            series=_series(raw)[0],
+            recurrence=_series(raw)[1],
             event_title=events[0].get("title") if events else None,
             outcome_yes=str(outcomes[0]),
             outcome_no=str(outcomes[1]),

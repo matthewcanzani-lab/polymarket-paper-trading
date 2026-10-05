@@ -28,8 +28,16 @@ REPORTS_DIR = PROJECT_ROOT / "reports"
 MARKET_DB_PATH = Path(_env("MARKET_DB_PATH", DATA_DIR / "market_data.db"))
 PREDICTIONS_DB_PATH = Path(_env("PREDICTIONS_DB_PATH", DATA_DIR / "predictions.db"))
 
-# Minimum lifetime volume (USD) for a market to count. 0 means "no cutoff yet".
-MIN_VOLUME_USD = float(_env("MIN_VOLUME_USD", 0))
+# Minimum lifetime volume (USD) for a market to count. Chosen from the Phase 1
+# volume report (see pmodel/universe.py for the reasoning).
+MIN_VOLUME_USD = float(_env("MIN_VOLUME_USD", 10_000))
+
+# Markets excluded from the universe regardless of volume: rapid-fire recurring
+# crypto coin flips. Matched on series recurrence and on question wording.
+# Sub-daily only: sports leagues also run "daily"/"weekly" series, so those stay in.
+# (The daily crypto "Up or Down" markets are caught by the question pattern.)
+EXCLUDE_RECURRENCES = ("1m", "5m", "15m", "30m", "1h", "hourly", "4h")
+EXCLUDE_QUESTION_PATTERNS = ("Up or Down",)
 
 # Ignore resolved markets that ended before this date (older ones are thin and
 # the platform behaved differently).

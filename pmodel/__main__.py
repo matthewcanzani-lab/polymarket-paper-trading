@@ -30,8 +30,8 @@ def _fmt(stats):
 
 def cmd_ingest_history(args):
     from pmodel.ingest import ingest_price_history
-    stats = ingest_price_history(PolymarketSource(), db.connect(), min_volume=args.min_volume,
-                                 limit=args.limit, refetch=args.refetch)
+    stats = ingest_price_history(PolymarketSource(), db.connect(), limit=args.limit,
+                                 refetch=args.refetch, sample=args.sample, workers=args.workers)
     print("  ", _fmt(stats))
 
 
@@ -77,9 +77,11 @@ def main():
     s.add_argument("--min-volume", type=float, help="skip markets below this lifetime volume (server-side)")
     s.set_defaults(func=cmd_ingest_markets)
 
-    s = sub.add_parser("ingest-history", help="pull price history for resolved markets above the cutoff")
-    s.add_argument("--min-volume", type=float, help="override MIN_VOLUME_USD for this run")
-    s.add_argument("--limit", type=int, help="only fetch N markets (largest first)")
+    s = sub.add_parser("ingest-history", help="pull price history for resolved markets in the universe")
+    s.add_argument("--limit", type=int, help="only fetch N markets")
+    s.add_argument("--sample", action="store_true",
+                   help="fixed pseudo-random order instead of newest-first (use with --limit)")
+    s.add_argument("--workers", type=int, default=6, help="parallel downloads (default 6)")
     s.add_argument("--refetch", action="store_true", help="re-download even if already fetched")
     s.set_defaults(func=cmd_ingest_history)
 

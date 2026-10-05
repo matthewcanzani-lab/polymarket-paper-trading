@@ -6,6 +6,7 @@ no POST/PUT/DELETE function, so nothing in this codebase can submit an order,
 even by accident. A test (tests/test_safety.py) fails if anyone adds one.
 """
 import sys
+import threading
 import time
 from urllib.parse import urlparse
 
@@ -18,8 +19,14 @@ ALLOWED_HOSTS = {
     "clob.polymarket.com",       # price history (public, read-only endpoint)
 }
 
-_session = requests.Session()
-_session.headers["User-Agent"] = "polymarket-model-v2 (paper trading research)"
+_local = threading.local()  # one Session per thread (Sessions aren't guaranteed thread-safe)
+
+
+def _session():
+    if not hasattr(_local, "session"):
+        _local.session = requests.Session()
+        _local.session.headers["User-Agent"] = "polymarket-model-v2 (paper trading research)"
+    return _local.session
 
 
 class HostNotAllowed(Exception):
@@ -36,7 +43,7 @@ def get_json(url, params=None, retries=4, timeout=30):
     for attempt in range(retries + 1):
         time.sleep(config.REQUEST_PAUSE_SEC)
         try:
-            resp = _session.get(url, params=params, timeout=timeout)
+            resp = _session().get(url, params=params, timeout=timeout)
         except requests.RequestException as exc:
             if attempt == retries:
                 raise

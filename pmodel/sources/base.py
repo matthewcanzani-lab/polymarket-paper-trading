@@ -33,6 +33,8 @@ class Market:
     best_bid: Optional[float]
     best_ask: Optional[float]
     tags: list = field(default_factory=list)  # raw platform tags, for later analysis
+    series: Optional[str] = None              # recurring series this market belongs to, if any
+    recurrence: Optional[str] = None          # how often that series repeats, e.g. "5m", "daily"
 
 
 @dataclass

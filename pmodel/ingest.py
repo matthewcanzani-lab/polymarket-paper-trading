@@ -1,8 +1,9 @@
 """Pull data from a MarketSource into the market database."""
 import itertools
+from concurrent.futures import ThreadPoolExecutor
 import time
 
-from pmodel import config, db
+from pmodel import db, universe
 from pmodel.sources.base import MarketSource
 
 
@@ -42,36 +43,47 @@ def ingest_markets(source: MarketSource, conn, closed: bool, end_date_min=None,
     return stats
 
 
-def ingest_price_history(source: MarketSource, conn, min_volume=None, limit=None,
-                         refetch=False, log=print) -> dict:
-    """Fetch YES price history for resolved markets at or above the volume cutoff.
+def ingest_price_history(source: MarketSource, conn, limit=None, refetch=False,
+                         sample=False, workers=6, log=print) -> dict:
+    """Fetch YES price history for resolved markets in the universe (see universe.py).
 
     Each resolved market only needs fetching once (its history can't change).
+    Default order is newest first. With sample=True the order is a fixed
+    pseudo-random shuffle (the same every run), so `limit` takes an unbiased,
+    reproducible sample across categories and dates — and a later run with a
+    bigger limit simply extends it.
+    Downloads run on `workers` threads; all database writes stay on this thread.
     """
-    min_volume = config.MIN_VOLUME_USD if min_volume is None else min_volume
-    sql = """
+    where, params = universe.sql_filter("m")
+    sql = f"""
         SELECT m.* FROM markets m JOIN outcomes o USING (platform, market_id)
-        WHERE m.platform = ? AND o.status = 'resolved' AND m.volume_usd >= ?
-          AND m.yes_token_id IS NOT NULL
+        WHERE m.platform = ? AND o.status = 'resolved' AND m.yes_token_id IS NOT NULL
+          AND {where}
     """
     if not refetch:
         sql += " AND m.history_fetched_at IS NULL"
-    sql += " ORDER BY m.volume_usd DESC"
+    if sample:
+        sql += " ORDER BY (CAST(m.market_id AS INTEGER) * 2654435761) % 1000003, m.market_id"
+    else:
+        sql += " ORDER BY m.end_date DESC"
     if limit:
         sql += f" LIMIT {int(limit)}"
-    rows = conn.execute(sql, (source.platform, min_volume)).fetchall()
-    log(f"Fetching price history for {len(rows)} resolved markets (volume >= ${min_volume:,.0f})")
+    rows = conn.execute(sql, [source.platform, *params]).fetchall()
+    log(f"Fetching price history for {len(rows):,} resolved markets in the universe")
 
     stats = {"markets": 0, "points": 0, "empty": 0}
-    for i, row in enumerate(rows, 1):
-        market = db.market_from_row(row)
-        points = source.price_history(market)
-        db.save_price_history(conn, market.platform, market.market_id, points, db.utc_now())
-        stats["markets"] += 1
-        stats["points"] += len(points)
-        stats["empty"] += not points
-        if i % 50 == 0:
-            conn.commit()
-            log(f"  ...{i}/{len(rows)}")
+    markets = [db.market_from_row(row) for row in rows]
+    started = time.monotonic()
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        for i, (market, points) in enumerate(
+                zip(markets, pool.map(source.price_history, markets)), 1):
+            db.save_price_history(conn, market.platform, market.market_id, points, db.utc_now())
+            stats["markets"] += 1
+            stats["points"] += len(points)
+            stats["empty"] += not points
+            if i % 500 == 0:
+                conn.commit()
+                rate = i / (time.monotonic() - started)
+                log(f"  ...{i:,}/{len(rows):,} ({rate:.1f} markets/s)")
     conn.commit()
     return stats

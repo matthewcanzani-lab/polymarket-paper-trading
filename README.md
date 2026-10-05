@@ -14,7 +14,7 @@ build an honest, forward-tested track record.
 
 | Phase | What | Status |
 |---|---|---|
-| 1 | Data: markets, price history, outcomes in SQLite; volume report | **built** |
+| 1 | Data: markets, price history, outcomes in SQLite; volume report | **done** |
 | 2 | Model: XGBoost, no look-ahead, time-based split, calibration + Brier | not started |
 | 3 | Paper trading log: edges > 5 pts, quarter Kelly, slippage, auto-settle, append-only | not started |
 | 4 | Flask dashboard | not started |
@@ -68,18 +68,35 @@ These steps are for a Mac. On Linux they're the same minus Homebrew.
 7. **Re-download market data** (it is *not* in git; it's big and can always be
    re-pulled): see "Phase 1 commands" below.
 
+## Which markets we use (the "universe")
+
+Defined once in `pmodel/universe.py`, settings in `pmodel/config.py`:
+
+- **Lifetime volume >= $10,000** (`MIN_VOLUME_USD`). Chosen from the Phase 1
+  volume report: below ~$5k the bid-ask spread doubles; above $10k it barely
+  improves, and ~1,000 open markets above $10k resolve in any 30-day window.
+- **No crypto "Up or Down" coin flips** (5-min/15-min/hourly/daily BTC, ETH, SOL,
+  XRP markets). They were ~170k of the ~190k crypto markets above $10k.
+
+Result (Oct 2026): ~270k resolved markets since 2024 and ~5,300 open ones.
+
 ## Phase 1 commands
 
 ```bash
 source venv/bin/activate
-python -m pmodel ingest-markets all          # active + resolved market listings and outcomes
-python -m pmodel volume-report               # prints the table, saves reports/volume_distribution.png
-# ...choose MIN_VOLUME_USD and put it in .env, then:
-python -m pmodel ingest-history              # price history for resolved markets above the cutoff
-python -m pmodel status                      # row counts
+python -m pmodel ingest-markets active                      # open markets (+ a snapshot of each)
+python -m pmodel ingest-markets resolved --min-volume 1000  # resolved since HISTORY_START_DATE (~1.5h)
+python -m pmodel volume-report                              # table + reports/volume_distribution.png
+python -m pmodel ingest-history --sample --limit 50000      # price history for a fixed random sample
+python -m pmodel status                                     # row counts
 ```
 
-Quick test without pulling everything: `python -m pmodel ingest-markets resolved --max 2000`.
+`--min-volume 1000` skips ~450k tiny markets the universe never uses. Later
+top-ups only need recent markets: `ingest-markets resolved --since 2026-10-01 --min-volume 1000`.
+
+**Price history quirks** (Polymarket's public API, checked Oct 2026): closed
+markets only return hourly data in windows of <= 14 days, so markets that lived
+<= 60 days get hourly history and longer ones get one point per 12 hours.
 
 Running `ingest-markets active` again later adds a new *snapshot* of every active
 market, so over time we build our own record of what prices and volumes looked
