@@ -192,7 +192,7 @@ class PolymarketSource(MarketSource):
         return Resolution(self.platform, str(raw["id"]), None, "ambiguous", resolved_at)
 
     def price_history(self, market: Market) -> list[PricePoint]:
-        """Hourly history for markets that lived <= HOURLY_MAX_DAYS, else 12-hourly.
+        """Hourly history for markets SCHEDULED to last <= HOURLY_MAX_DAYS, else 12-hourly.
 
         Hourly costs one request per 14 days of market life, so long-running
         markets get the cheaper coarse series (one request).
@@ -200,8 +200,16 @@ class PolymarketSource(MarketSource):
         if not market.yes_token_id:
             return []
         start = _iso_to_unix(market.created_at or market.start_date)
-        end = _iso_to_unix(market.closed_time or market.end_date)
-        if start and end and 0 < end - start <= config.HOURLY_MAX_DAYS * 86400:
+        scheduled_end = _iso_to_unix(market.end_date)
+        # LOOK-AHEAD GUARD: choose the granularity from the SCHEDULED length, which is
+        # known when the market opens. Using the actual close time would make "hourly
+        # data" a hint that the market closed early (often meaning it resolved YES early).
+        hourly = bool(start and scheduled_end
+                      and 0 < scheduled_end - start <= config.HOURLY_MAX_DAYS * 86400)
+        # How far to fetch doesn't leak anything (features only use points before the
+        # prediction time), so cover the full span the market actually traded.
+        end = max(filter(None, [scheduled_end, _iso_to_unix(market.closed_time)]), default=None)
+        if hourly and end:
             seen = {}
             t = start
             while t < end:

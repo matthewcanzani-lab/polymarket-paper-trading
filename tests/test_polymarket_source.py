@@ -76,7 +76,7 @@ def test_keyset_pagination_follows_cursor(monkeypatch):
 
 def test_short_market_gets_hourly_history_in_14_day_windows(monkeypatch):
     src = PolymarketSource()
-    m = src.parse_market(gamma_market(5, closed=True))  # lives Jan 1 -> Mar 1 = 59 days
+    m = src.parse_market(gamma_market(5, closed=True, end="2026-03-01T00:00:00Z"))  # scheduled 59 days
     calls = []
 
     def fake_get(url, params=None):
@@ -105,3 +105,19 @@ def test_long_market_gets_coarse_history_in_one_request(monkeypatch):
     monkeypatch.setattr(polymarket.safe_http, "get_json", fake_get)
     assert len(src.price_history(m)) == 1
     assert calls == [{"market": "tok6yes", "interval": "max", "fidelity": 720}]
+
+
+def test_granularity_uses_scheduled_length_not_actual_close(monkeypatch):
+    """Look-ahead guard: a long market that happened to close early must NOT get
+    hourly data, or the data's resolution would hint at the outcome."""
+    src = PolymarketSource()
+    raw = gamma_market(7, closed=True)
+    raw["createdAt"] = "2026-01-01T00:00:00Z"
+    raw["endDate"] = "2026-12-31T00:00:00Z"         # scheduled for a year...
+    raw["closedTime"] = "2026-01-05 00:00:00+00"    # ...but closed after 4 days
+    m = src.parse_market(raw)
+    calls = []
+    monkeypatch.setattr(polymarket.safe_http, "get_json",
+                        lambda url, params=None: calls.append(params) or {"history": []})
+    src.price_history(m)
+    assert calls == [{"market": "tok7yes", "interval": "max", "fidelity": 720}]
