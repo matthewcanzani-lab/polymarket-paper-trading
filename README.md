@@ -16,7 +16,7 @@ build an honest, forward-tested track record.
 |---|---|---|
 | 1 | Data: markets, price history, outcomes in SQLite; volume report | **done** |
 | 2 | Model: XGBoost, no look-ahead, time-based split, calibration + Brier | **done — no edge found yet** |
-| 3 | Paper trading log: edges > 5 pts, quarter Kelly, slippage, auto-settle, append-only | not started |
+| 3 | Paper trading log: edges > 5 pts, quarter Kelly, slippage, auto-settle, append-only | **built — real ledger not started yet** |
 | 4 | Flask dashboard | not started |
 | 5 | Automation: scheduled scoring, retrain every ~50 resolutions | not started |
 
@@ -135,6 +135,25 @@ metrics), `backtest_report.txt` and `calibration.png`. Everything there is a
 0.1283 = market 0.1283; XGBoost found no correction that helped on validation.
 Polymarket prices in this universe are already well calibrated, and price/
 volume history alone doesn't beat them.
+
+## Phase 3: paper trading
+
+```bash
+python -m pmodel score     # score open markets, log PAPER bets to data/predictions.db
+python -m pmodel settle    # settle paper bets whose markets resolved
+python -m pmodel ledger    # show bankroll/bets and verify nothing was edited
+```
+
+Rules (all in `pmodel/config.py`): open markets in the universe with >= $10k
+volume so far, ending within 30 days; bet when the model and the market midpoint
+differ by > 5 points; fill = walk the real order book + 1 cent per share
+slippage; stake = quarter Kelly on a fake $1,000, max 5% per bet, never more
+than available cash; one bet per market; only if still +EV after costs.
+
+The ledger is append-only (SQLite triggers block UPDATE/DELETE), every row is
+hash-chained to the previous one (`ledger` detects any edit), and the file is
+committed to git so GitHub holds dated copies. Trading logic lives in
+`pmodel/trading/` and only talks to the `MarketSource` interface.
 
 ## Where the data lives — and why there are two databases
 

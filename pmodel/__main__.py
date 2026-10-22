@@ -60,6 +60,41 @@ def cmd_train(args):
     train.run(df)
 
 
+def _ledger(args):
+    from pmodel.trading import ledger
+    return ledger.connect(args.ledger)
+
+
+def cmd_score(args):
+    from pmodel.trading import scorer
+    scorer.run(PolymarketSource(), _ledger(args), workers=args.workers)
+
+
+def cmd_settle(args):
+    from pmodel.trading import settle
+    settle.run(PolymarketSource(), _ledger(args))
+
+
+def cmd_ledger(args):
+    from pmodel.trading import ledger
+    conn = _ledger(args)
+    problems = ledger.verify(conn)
+    money = ledger.bankroll(conn)
+    q = lambda sql: conn.execute(sql).fetchone()[0]
+    print(f"Ledger: {args.ledger or config.PREDICTIONS_DB_PATH}")
+    print(f"  integrity:   {'OK - no edits, deletions or reordering detected' if not problems else 'PROBLEMS:'}")
+    for p in problems:
+        print(f"    ! {p}")
+    print(f"  runs:        {q('SELECT COUNT(*) FROM runs'):,}")
+    print(f"  bets:        {q('SELECT COUNT(*) FROM bets'):,} "
+          f"({len(ledger.open_bets(conn)):,} open, {q('SELECT COUNT(*) FROM settlements'):,} settled)")
+    print(f"  bankroll:    ${money['bankroll']:,.2f} (realized P&L ${money['realized_pnl']:+,.2f}), "
+          f"cash ${money['cash']:,.2f}, at risk ${money['open_stake']:,.2f}")
+    for r in conn.execute("SELECT * FROM bets ORDER BY seq DESC LIMIT 10"):
+        print(f"  {r['placed_at']} {r['side']:3} ${r['stake']:7.2f} @ {r['fill_price']:.3f} "
+              f"model {r['model_prob_yes']:.0%} mkt {r['market_mid']:.0%}  {r['question'][:50]}")
+
+
 def cmd_status(args):
     conn = db.connect()
     q = lambda sql: conn.execute(sql).fetchone()[0]
@@ -108,6 +143,15 @@ def main():
     s.set_defaults(func=cmd_ingest_trades)
 
     sub.add_parser("train", help="train + backtest a new model version (saved under models/)").set_defaults(func=cmd_train)
+    for name, func, helptext in (
+            ("score", cmd_score, "score open markets and log PAPER bets"),
+            ("settle", cmd_settle, "settle paper bets whose markets resolved"),
+            ("ledger", cmd_ledger, "show the paper ledger and check it hasn't been tampered with")):
+        s = sub.add_parser(name, help=helptext)
+        s.add_argument("--ledger", help="ledger file (default data/predictions.db)")
+        if name == "score":
+            s.add_argument("--workers", type=int, default=8)
+        s.set_defaults(func=func)
     sub.add_parser("status", help="row counts in the market database").set_defaults(func=cmd_status)
     sub.add_parser("backup", help="copy the prediction log to BACKUP_DIR").set_defaults(func=cmd_backup)
 

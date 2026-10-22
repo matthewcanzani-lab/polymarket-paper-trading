@@ -62,6 +62,14 @@ class TradeHistory:
 
 
 @dataclass
+class OrderBook:
+    """Resting orders on the YES token. Each level is (price, shares)."""
+    bids: list   # best (highest) first
+    asks: list   # best (lowest) first
+    min_order_shares: float = 0.0
+
+
+@dataclass
 class PricePoint:
     ts: int       # unix seconds, UTC
     price: float  # YES price, 0..1
@@ -72,7 +80,8 @@ class MarketSource(ABC):
 
     @abstractmethod
     def iter_markets(self, closed: bool, end_date_min: Optional[str] = None,
-                     volume_min: Optional[float] = None) -> Iterator[dict]:
+                     volume_min: Optional[float] = None,
+                     end_date_max: Optional[str] = None) -> Iterator[dict]:
         """Yield raw market records from the platform API.
 
         end_date_min / volume_min let the platform filter server-side, so we don't
@@ -94,6 +103,23 @@ class MarketSource(ABC):
     @abstractmethod
     def trade_history(self, market: Market) -> TradeHistory:
         """Hourly traded-dollar totals, so we can tell how much had traded BY a moment."""
+
+    @abstractmethod
+    def order_book(self, market: Market) -> Optional[OrderBook]:
+        """Current order book for the YES side (read-only), or None if unavailable."""
+
+    @abstractmethod
+    def markets_by_id(self, market_ids: list[str]) -> list[dict]:
+        """Raw records for specific markets, open or closed (used to settle bets)."""
+
+    @abstractmethod
+    def yes_payout(self, raw: dict) -> Optional[float]:
+        """What one YES share paid once the market is final (1, 0, 0.5 for a split),
+        or None if it isn't final yet (still open, or the result is disputed)."""
+
+    @abstractmethod
+    def is_accepting_orders(self, raw: dict) -> bool:
+        """Whether the market is currently open for trading."""
 
     @abstractmethod
     def history_step_seconds(self, market: Market) -> int:

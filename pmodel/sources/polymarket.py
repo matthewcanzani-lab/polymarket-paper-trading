@@ -8,12 +8,13 @@ from datetime import datetime, timezone
 from typing import Iterator, Optional
 
 from pmodel import config, safe_http
-from pmodel.sources.base import (Market, MarketSource, PricePoint, Resolution, TradeBucket,
-                                 TradeHistory)
+from pmodel.sources.base import (Market, MarketSource, OrderBook, PricePoint, Resolution,
+                                 TradeBucket, TradeHistory)
 
 GAMMA_URL = "https://gamma-api.polymarket.com/markets/keyset"  # cursor paging (plain /markets caps the offset)
 PRICES_URL = "https://clob.polymarket.com/prices-history"
 TRADES_URL = "https://data-api.polymarket.com/trades"
+BOOK_URL = "https://clob.polymarket.com/book"  # public, read-only order book
 MARKETS_BY_ID_URL = "https://gamma-api.polymarket.com/markets"
 TRADES_PAGE = 500
 TRADES_MAX_OFFSET = 10_000  # the Data API refuses deeper pages (newest trades come first)
@@ -120,7 +121,8 @@ class PolymarketSource(MarketSource):
     platform = "polymarket"
 
     def iter_markets(self, closed: bool, end_date_min: Optional[str] = None,
-                     volume_min: Optional[float] = None) -> Iterator[dict]:
+                     volume_min: Optional[float] = None,
+                     end_date_max: Optional[str] = None) -> Iterator[dict]:
         cursor = None
         while True:
             params = {"limit": PAGE_SIZE, "closed": str(closed).lower(), "include_tag": "true"}
@@ -130,6 +132,8 @@ class PolymarketSource(MarketSource):
                 params["end_date_min"] = end_date_min
             if volume_min:
                 params["volume_num_min"] = volume_min
+            if end_date_max:
+                params["end_date_max"] = end_date_max
             if cursor:
                 params["after_cursor"] = cursor
             page = safe_http.get_json(GAMMA_URL, params=params)
@@ -249,15 +253,48 @@ class PolymarketSource(MarketSource):
         return TradeHistory([TradeBucket(h, u, n) for h, (u, n) in sorted(buckets.items())],
                             complete, earliest)
 
-    def condition_ids(self, market_ids: list[str]) -> dict:
-        """Look up conditionIds for up to 100 market IDs in one request."""
-        params = [("id", m) for m in market_ids] + [("closed", "true"), ("limit", len(market_ids))]
+    def markets_by_id(self, market_ids: list[str]) -> list[dict]:
+        """Raw records for up to 100 market IDs, whether open or closed."""
         found = {}
         for closed in ("true", "false"):
-            params[-2] = ("closed", closed)
+            params = [("id", m) for m in market_ids] + [("closed", closed),
+                                                        ("limit", len(market_ids))]
             for raw in safe_http.get_json(MARKETS_BY_ID_URL, params=params) or []:
-                found[str(raw["id"])] = raw.get("conditionId")
-        return found
+                found[str(raw["id"])] = raw
+        return list(found.values())
+
+    def condition_ids(self, market_ids: list[str]) -> dict:
+        """Look up conditionIds for up to 100 market IDs."""
+        return {str(r["id"]): r.get("conditionId") for r in self.markets_by_id(market_ids)}
+
+    def yes_payout(self, raw: dict) -> Optional[float]:
+        res = self.parse_resolution(raw)
+        if res is None:
+            return None
+        if res.status == "resolved":
+            return float(res.resolved_yes)
+        # Polymarket pays 0.50 per share on a 50-50 resolution — but only count it
+        # once the oracle says it's final (not while disputed).
+        prices = _maybe_json_list(raw.get("outcomePrices")) or []
+        yes = _float(prices[0]) if len(prices) == 2 else None
+        if (raw.get("umaResolutionStatus") or "").lower() == "resolved" and yes is not None \
+                and abs(yes - 0.5) < 0.01:
+            return 0.5
+        return None
+
+    def is_accepting_orders(self, raw: dict) -> bool:
+        return bool(raw.get("active")) and not raw.get("closed") and raw.get("acceptingOrders", True)
+
+    def order_book(self, market: Market) -> Optional[OrderBook]:
+        if not market.yes_token_id:
+            return None
+        data = safe_http.get_json(BOOK_URL, params={"token_id": market.yes_token_id})
+        if not isinstance(data, dict) or "bids" not in data:
+            return None
+        bids = sorted(((float(l["price"]), float(l["size"])) for l in data["bids"]), reverse=True)
+        asks = sorted((float(l["price"]), float(l["size"])) for l in data["asks"])
+        return OrderBook(bids=bids, asks=asks,
+                         min_order_shares=_float(data.get("min_order_size")) or 0.0)
 
     def history_step_seconds(self, market: Market) -> int:
         return 3600 if _hourly(market) else COARSE_FIDELITY_MIN * 60

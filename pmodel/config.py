@@ -53,3 +53,21 @@ REQUEST_PAUSE_SEC = float(_env("REQUEST_PAUSE_SEC", 0.25))
 BACKUP_DIR = _env("BACKUP_DIR", None)
 if BACKUP_DIR:
     BACKUP_DIR = Path(os.path.expanduser(BACKUP_DIR))
+
+# ---------------------------------------------------------------------------
+# Paper trading (Phase 3). FAKE money only — nothing here can place an order.
+# ---------------------------------------------------------------------------
+BANKROLL_START_USD = float(_env("BANKROLL_START_USD", 1000))
+# Bet only when model and market midpoint disagree by more than this (5 points).
+EDGE_THRESHOLD = float(_env("EDGE_THRESHOLD", 0.05))
+# Fraction of the full Kelly stake (0.25 = quarter Kelly).
+KELLY_MULTIPLIER = float(_env("KELLY_MULTIPLIER", 0.25))
+# Extra cost per share on top of walking the real order book (1 cent).
+# Phase 1: median bid-ask spread at >= $10k volume was ~1.0c; paying the ask
+# already covers the spread, this covers latency and price moving against us.
+SLIPPAGE_PER_SHARE = float(_env("SLIPPAGE_PER_SHARE", 0.01))
+# Never stake more than this share of the bankroll on one bet.
+MAX_STAKE_FRACTION = float(_env("MAX_STAKE_FRACTION", 0.05))
+MIN_STAKE_USD = float(_env("MIN_STAKE_USD", 1))
+# Only score markets scheduled to end within this many days (faster settlement).
+SCORE_MAX_DAYS_TO_END = int(_env("SCORE_MAX_DAYS_TO_END", 30))
