@@ -16,8 +16,8 @@ build an honest, forward-tested track record.
 |---|---|---|
 | 1 | Data: markets, price history, outcomes in SQLite; volume report | **done** |
 | 2 | Model: XGBoost, no look-ahead, time-based split, calibration + Brier | **done — no edge found yet** |
-| 3 | Paper trading log: edges > 5 pts, quarter Kelly, slippage, auto-settle, append-only | **built — real ledger not started yet** |
-| 4 | Flask dashboard | not started |
+| 3 | Paper trading log: edges > 5 pts, quarter Kelly, slippage, auto-settle, append-only | **done — live ledger started 2026-10-22** |
+| 4 | Flask dashboard (+ static export) | **done** |
 | 5 | Automation: scheduled scoring, retrain every ~50 resolutions | not started |
 
 ## Set up on a new computer (from zero)
@@ -154,6 +154,22 @@ The ledger is append-only (SQLite triggers block UPDATE/DELETE), every row is
 hash-chained to the previous one (`ledger` detects any edit), and the file is
 committed to git so GitHub holds dated copies. Trading logic lives in
 `pmodel/trading/` and only talks to the `MarketSource` interface.
+
+## Phase 4: dashboard
+
+```bash
+python -m pmodel dashboard     # live Flask app at http://127.0.0.1:5000
+python -m pmodel build-site    # same pages as static HTML in site/ — open site/index.html anywhere
+```
+
+Pages: **Overview** (bankroll, success-criteria progress, latest run), **Live
+Markets**, **Edge Finder**, **Paper Portfolio** (P&L curve, open and settled
+bets), **Model Stats** (forward calibration, Brier, win rate, return on stake,
+by-category P&L). FORWARD results (green, solid border) and BACKTEST results
+(grey, dashed box) are always shown separately and labelled.
+
+The static export needs no server, so it works on a locked-down computer and
+can be published (e.g. GitHub Pages) for others to see.
 
 ## Where the data lives — and why there are two databases
 
