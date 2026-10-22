@@ -105,7 +105,7 @@ class FixedModel:
 
 
 def _open_market(id):
-    raw = gamma_market(id, volume=50_000, end="2026-10-30T00:00:00Z")
+    raw = gamma_market(id, volume=50_000, end="2026-10-30T00:00:00Z", bid=0.49, ask=0.51)
     raw["acceptingOrders"] = True
     raw["createdAt"] = "2026-10-01T00:00:00Z"
     raw["conditionId"] = f"0xcond{id}"
@@ -155,3 +155,14 @@ def test_yes_payout(prices, uma, expected):
     raw = gamma_market(1, closed=True)
     raw.update(outcomePrices=prices, umaResolutionStatus=uma)
     assert PolymarketSource().yes_payout(raw) == expected
+
+
+def test_scorer_uses_live_midpoint_not_stale_history(monkeypatch):
+    """History says 0.50 but the market now quotes 0.97/0.99 -> model input is 0.98."""
+    src = FakeSource([], None)
+    raw = _open_market(1)
+    raw.update(bestBid=0.97, bestAsk=0.99)
+    m = src.parse_market(raw)
+    f = scorer._features_now(src, m, 1_792_200_000)
+    assert f["price"] == pytest.approx(0.98)
+    assert f["staleness_h"] == 0

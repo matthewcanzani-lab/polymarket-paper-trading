@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block body %}
+<h1>Edge Finder</h1>
+{% if scores %}
+<p class="lede">Biggest disagreements between the model and the market midpoint (scored {{ scores.scored_at }}). A paper bet needs a gap above <strong>{{ (scores.edge_threshold * 100)|round|int }} points</strong> <em>and</em> a positive expected value after walking the order book plus {{ (cfg.SLIPPAGE_PER_SHARE * 100)|round|int }}¢ slippage.</p>
+{% set over = rows|selectattr('edge', 'gt', scores.edge_threshold)|list + rows|selectattr('edge', 'lt', -scores.edge_threshold)|list %}
+<p class="note">{{ over|length }} market(s) above the threshold in this run.</p>
+<div class="tablewrap"><table>
+<tr><th>Market</th><th>Category</th><th class="n">Market</th><th class="n">Model</th><th class="n">Gap (pts)</th><th>Outcome of this run</th></tr>
+{% for r in rows %}
+<tr><td class="q">{{ r.question }}</td><td>{{ r.category or '—' }}</td>
+<td class="n">{{ '{:.1%}'.format(r.mid) }}</td><td class="n">{{ '{:.1%}'.format(r.model_prob_yes) }}</td>
+<td class="n {{ 'pos' if r.edge|abs > scores.edge_threshold else 'dim' }}">{{ '{:+.1f}'.format(r.edge * 100) }}</td>
+<td>{{ r.status }}</td></tr>
+{% endfor %}
+</table></div>
+{% else %}<p class="empty">No scorer snapshot yet — run <code>python -m pmodel score</code>.</p>{% endif %}
+{% endblock %}

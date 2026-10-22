@@ -1,0 +1,8 @@
+{% for c in criteria %}
+<div class="crit {{ 'met' if c.met else 'not' }}">
+  <span class="icon">{{ '✓' if c.met else '○' }}</span>
+  <span>{{ c.name }}</span>
+  <span class="val">{{ c.value }}</span>
+  {% if c.progress is not none %}<div class="bar"><span style="width: {{ (c.progress * 100)|round(1) }}%"></span></div>{% endif %}
+</div>
+{% endfor %}

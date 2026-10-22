@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block body %}
+<h1>Model Stats</h1>
+<section class="fwd">
+<h2><span class="badge fwd">FORWARD</span>Paper-trading results (settled bets only)</h2>
+<div class="tiles">
+  <div class="tile"><div class="k">Settled bets</div><div class="v">{{ fs.settled }}</div></div>
+  <div class="tile"><div class="k">Brier score</div><div class="v">{{ '{:.4f}'.format(fs.brier) if fs.brier is not none else '—' }}</div></div>
+  <div class="tile"><div class="k">Win rate</div><div class="v">{{ '{:.1%}'.format(fs.win_rate) if fs.win_rate is not none else '—' }}</div></div>
+  <div class="tile"><div class="k">Return on stake</div><div class="v">{{ '{:+.1%}'.format(fs.return_on_stake) if fs.return_on_stake is not none else '—' }}</div></div>
+</div>
+<h2>Calibration of paper bets</h2>
+<p class="note">For each bet: the probability the model gave the side we bought vs. how often that side won.</p>
+{{ fwd_cal_svg|safe }}
+{% if fs.by_category %}<h2>By category</h2><div class="tablewrap"><table>
+<tr><th>Category</th><th class="n">Bets</th><th class="n">Staked</th><th class="n">P&amp;L</th></tr>
+{% for c in fs.by_category %}<tr><td>{{ c.category }}</td><td class="n">{{ c.bets }}</td><td class="n">${{ '{:,.2f}'.format(c.stake) }}</td>
+<td class="n {{ 'pos' if c.pnl > 0 else 'neg' }}">${{ '{:+,.2f}'.format(c.pnl) }}</td></tr>{% endfor %}
+</table></div>{% endif %}
+<h2>Success criteria</h2>
+{% include "_criteria.html" %}
+</section>
+
+<section class="bt">
+<h2><span class="badge bt">BACKTEST</span>Historical simulation — not part of the track record</h2>
+{% if current %}{% set m = current.meta.test_metrics %}
+<p class="note">Model {{ current.version }} · test predictions from {{ current.meta.split.test_start }} · {{ '{:,}'.format(m.markets) }} markets the model never trained on.</p>
+<div class="tiles">
+  <div class="tile"><div class="k">Brier — model</div><div class="v">{{ '{:.4f}'.format(m.brier_model) }}</div></div>
+  <div class="tile"><div class="k">Brier — market price</div><div class="v">{{ '{:.4f}'.format(m.brier_market) }}</div></div>
+  <div class="tile"><div class="k">Worst calibration gap</div><div class="v">{{ '{:.1f}'.format(m.max_cal_gap_model_pts) }} pts</div></div>
+  <div class="tile"><div class="k">Model better in</div><div class="v">{{ '{:.0%}'.format(current.meta.test_bootstrap.share_of_draws_model_better) }}</div><div class="k">of resamples</div></div>
+</div>
+{% if bt_img %}<p><img class="bt" alt="Backtest calibration chart" src="data:image/png;base64,{{ bt_img }}"></p>{% endif %}
+{% else %}<p class="empty">No trained model yet.</p>{% endif %}
+<h2>All model versions</h2>
+<div class="tablewrap"><table>
+<tr><th>Version</th><th class="n">Test markets</th><th class="n">Brier model</th><th class="n">Brier market</th><th>Status</th></tr>
+{% for v in versions %}{% set m = v.meta.test_metrics %}<tr><td>{{ v.version }}</td><td class="n">{{ '{:,}'.format(m.markets) }}</td>
+<td class="n">{{ '{:.4f}'.format(m.brier_model) }}</td><td class="n">{{ '{:.4f}'.format(m.brier_market) }}</td>
+<td>{{ ('superseded: ' ~ v.superseded) if v.superseded else 'current' }}</td></tr>{% endfor %}
+</table></div>
+</section>
+{% endblock %}

@@ -67,7 +67,8 @@ def _ledger(args):
 
 def cmd_score(args):
     from pmodel.trading import scorer
-    scorer.run(PolymarketSource(), _ledger(args), workers=args.workers)
+    snapshot = None if args.ledger else config.LATEST_SCORES_PATH
+    scorer.run(PolymarketSource(), _ledger(args), workers=args.workers, snapshot_path=snapshot)
 
 
 def cmd_settle(args):
@@ -93,6 +94,18 @@ def cmd_ledger(args):
     for r in conn.execute("SELECT * FROM bets ORDER BY seq DESC LIMIT 10"):
         print(f"  {r['placed_at']} {r['side']:3} ${r['stake']:7.2f} @ {r['fill_price']:.3f} "
               f"model {r['model_prob_yes']:.0%} mkt {r['market_mid']:.0%}  {r['question'][:50]}")
+
+
+def cmd_dashboard(args):
+    from pmodel.dashboard.app import create_app
+    print("Dashboard at http://127.0.0.1:%d  (Ctrl+C to stop)" % args.port)
+    create_app().run(host="127.0.0.1", port=args.port, debug=False)
+
+
+def cmd_build_site(args):
+    from pmodel.dashboard.app import build_site
+    out = build_site(config.PROJECT_ROOT / "site")
+    print(f"Static dashboard written to {out}/index.html — open it in any browser.")
 
 
 def cmd_status(args):
@@ -152,6 +165,11 @@ def main():
         if name == "score":
             s.add_argument("--workers", type=int, default=8)
         s.set_defaults(func=func)
+    s = sub.add_parser("dashboard", help="run the Flask dashboard locally")
+    s.add_argument("--port", type=int, default=5000)
+    s.set_defaults(func=cmd_dashboard)
+    sub.add_parser("build-site", help="export the dashboard as static HTML into site/").set_defaults(
+        func=cmd_build_site)
     sub.add_parser("status", help="row counts in the market database").set_defaults(func=cmd_status)
     sub.add_parser("backup", help="copy the prediction log to BACKUP_DIR").set_defaults(func=cmd_backup)
 

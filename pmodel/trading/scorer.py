@@ -22,6 +22,7 @@ import numpy as np
 from pmodel import config, universe
 from pmodel.db import utc_now
 from pmodel.model import registry
+from pmodel.model.train import _git_commit
 from pmodel.model.features import features_at, static_info
 from pmodel.sources.base import MarketSource
 from pmodel.trading import ledger
@@ -56,12 +57,29 @@ def candidates(source: MarketSource, conn, now: datetime, log=print):
     return out
 
 
+def live_mid(market):
+    """Current midpoint from the market listing, or the last price if no clean quote."""
+    bid, ask = market.best_bid, market.best_ask
+    if bid is not None and ask is not None and 0 <= bid <= ask <= 1:
+        return (bid + ask) / 2
+    return market.yes_price
+
+
 def _features_now(source: MarketSource, market, t: int):
     hist = source.price_history(market)
     if not hist:
         return None
-    ts = np.array([p.ts for p in hist], dtype=np.int64)
-    ps = np.array([p.price for p in hist], dtype=np.float64)
+    step = source.history_step_seconds(market)
+    # Price history can be hours old (hourly or 12-hourly buckets). Add the CURRENT
+    # midpoint as the newest point, stamped so features_at treats it as known right
+    # now, so the model judges the market as it is, not as it was. (Without this a
+    # stale price looks like a huge "edge" whenever the market has since moved.)
+    mid = live_mid(market)
+    keep = [p for p in hist if p.ts < t - step]
+    ts = np.array([p.ts for p in keep] + ([t - step] if mid is not None else []), dtype=np.int64)
+    ps = np.array([p.price for p in keep] + ([mid] if mid is not None else []), dtype=np.float64)
+    if ts.size == 0:
+        return None
     trades = None
     if market.condition_id:
         th = source.trade_history(market)
@@ -69,10 +87,10 @@ def _features_now(source: MarketSource, market, t: int):
             trades = (np.array([b.hour_ts for b in th.buckets], dtype=np.int64),
                       np.array([b.usd for b in th.buckets]),
                       np.array([b.trades for b in th.buckets], dtype=np.float64))
-    return features_at(static_info(market), ts, ps, t, source.history_step_seconds(market), trades)
+    return features_at(static_info(market), ts, ps, t, step, trades)
 
 
-def run(source: MarketSource, conn, workers=8, log=print) -> dict:
+def run(source: MarketSource, conn, workers=8, log=print, snapshot_path=None) -> dict:
     started = datetime.now(timezone.utc)
     model = registry.latest()
     run_id = f"run-{started.strftime('%Y%m%dT%H%M%SZ')}-{uuid.uuid4().hex[:6]}"
@@ -87,16 +105,24 @@ def run(source: MarketSource, conn, workers=8, log=print) -> dict:
     probs = model.predict([f for _, f in scored]) if scored else []
 
     money = ledger.bankroll(conn)
-    signals, bets = 0, []
+    signals, bets, snapshot = 0, [], []
     for (market, feat), p in zip(scored, probs):
+        row = {"market_id": market.market_id, "question": market.question,
+               "category": market.category, "end_date": market.end_date,
+               "volume_usd": market.volume_usd, "last_price": feat["price"],
+               "best_bid": market.best_bid, "best_ask": market.best_ask,
+               "model_prob_yes": float(p), "status": "no edge"}
+        snapshot.append(row)
         # Cheap pre-check on the last price before spending a request on the order book.
         if abs(p - feat["price"]) <= config.EDGE_THRESHOLD:
             continue
         book = source.order_book(market)
         if not book or not book.bids or not book.asks:
+            row["status"] = "edge, but empty order book"
             continue
         bid, ask = book.bids[0][0], book.asks[0][0]
         mid = (bid + ask) / 2
+        row.update(best_bid=bid, best_ask=ask)
         if abs(p - mid) <= config.EDGE_THRESHOLD:
             continue
         signals += 1
@@ -105,7 +131,9 @@ def run(source: MarketSource, conn, workers=8, log=print) -> dict:
         levels = book.asks if side == "YES" else no_side_levels(book.bids)
         sized = size_bet(q, levels, money["bankroll"], money["cash"], config)
         if sized is None or sized["shares"] < book.min_order_shares:
+            row["status"] = "edge, but not worth it after fill costs"
             continue
+        row["status"] = f"PAPER BET {side}"
         fields = {
             "bet_id": f"bet-{uuid.uuid4().hex[:12]}", "run_id": run_id, "placed_at": utc_now(),
             "platform": market.platform, "market_id": market.market_id,
@@ -126,9 +154,17 @@ def run(source: MarketSource, conn, workers=8, log=print) -> dict:
         "run_id": run_id, "started_at": _iso(started), "finished_at": utc_now(),
         "model_version": model.version, "markets_scored": len(scored), "signals": signals,
         "bets_placed": len(bets),
-        "settings_json": json.dumps({k: getattr(config, k) for k in SETTINGS_KEYS}),
+        "settings_json": json.dumps({**{k: getattr(config, k) for k in SETTINGS_KEYS},
+                                     "code_commit": _git_commit()}),
     })
     conn.commit()
+    if snapshot_path:
+        # Not part of the ledger (it's overwritten each run): feeds the dashboard's
+        # Live Markets / Edge Finder pages.
+        snapshot_path.parent.mkdir(parents=True, exist_ok=True)
+        snapshot_path.write_text(json.dumps({
+            "run_id": run_id, "scored_at": _iso(started), "model_version": model.version,
+            "edge_threshold": config.EDGE_THRESHOLD, "markets": snapshot}))
     summary = {"markets_scored": len(scored), "signals": signals, "bets_placed": len(bets)}
     log(f"Run finished: {summary}")
     return summary

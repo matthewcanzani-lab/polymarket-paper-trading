@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block body %}
+<h1>Paper Portfolio</h1>
+<section class="fwd">
+<p class="lede"><span class="badge fwd">FORWARD</span>Fake ${{ '{:,.0f}'.format(cfg.BANKROLL_START_USD) }} bankroll · quarter Kelly · every fill pays the real order book + {{ (cfg.SLIPPAGE_PER_SHARE * 100)|round|int }}¢ slippage.</p>
+<div class="tiles">
+  <div class="tile"><div class="k">Bankroll</div><div class="v">${{ '{:,.2f}'.format(fs.money.bankroll) }}</div></div>
+  <div class="tile"><div class="k">Cash</div><div class="v">${{ '{:,.2f}'.format(fs.money.cash) }}</div></div>
+  <div class="tile"><div class="k">At risk (open)</div><div class="v">${{ '{:,.2f}'.format(fs.money.open_stake) }}</div></div>
+  <div class="tile"><div class="k">Realized P&amp;L</div><div class="v {{ 'pos' if fs.total_pnl > 0 else 'neg' if fs.total_pnl < 0 }}">${{ '{:+,.2f}'.format(fs.total_pnl) }}</div></div>
+</div>
+<h2>Cumulative P&amp;L</h2>
+{{ pnl_svg|safe }}
+<h2>Open bets ({{ open_bets|length }})</h2>
+{% if open_bets %}<div class="tablewrap"><table>
+<tr><th>Placed</th><th>Market</th><th>Side</th><th class="n">Model P(YES)</th><th class="n">Market</th><th class="n">Fill</th><th class="n">Stake</th><th>Ends</th></tr>
+{% for b in open_bets %}<tr><td>{{ b.placed_at[:16] }}</td><td class="q">{{ b.question }}</td><td>{{ b.side }}</td>
+<td class="n">{{ '{:.1%}'.format(b.model_prob_yes) }}</td><td class="n">{{ '{:.1%}'.format(b.market_mid) }}</td>
+<td class="n">{{ '{:.3f}'.format(b.fill_price) }}</td><td class="n">${{ '{:,.2f}'.format(b.stake) }}</td><td>{{ (b.end_date or '')[:10] }}</td></tr>{% endfor %}
+</table></div>{% else %}<p class="empty">No open bets.</p>{% endif %}
+<h2>Settled bets ({{ settled|length }})</h2>
+{% if settled %}<div class="tablewrap"><table>
+<tr><th>Settled</th><th>Market</th><th>Side</th><th class="n">Fill</th><th class="n">Stake</th><th class="n">P&amp;L</th></tr>
+{% for b in settled %}<tr><td>{{ b.settled_at[:10] }}</td><td class="q">{{ b.question }}</td><td>{{ b.side }}</td>
+<td class="n">{{ '{:.3f}'.format(b.fill_price) }}</td><td class="n">${{ '{:,.2f}'.format(b.stake) }}</td>
+<td class="n {{ 'pos' if b.pnl > 0 else 'neg' }}">${{ '{:+,.2f}'.format(b.pnl) }}</td></tr>{% endfor %}
+</table></div>{% else %}<p class="empty">No settled bets yet.</p>{% endif %}
+</section>
+{% endblock %}

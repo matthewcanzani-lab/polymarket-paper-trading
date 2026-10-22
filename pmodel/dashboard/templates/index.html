@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block body %}
+<h1>Overview</h1>
+<p class="lede">An honest, forward-tested track record: every prediction is logged <em>before</em> its market resolves, and performance is measured only on those.</p>
+{% if integrity %}<div class="alert"><strong>Ledger integrity problem:</strong> {{ integrity|join('; ') }}</div>
+{% endif %}
+<section class="fwd">
+<h2><span class="badge fwd">FORWARD</span>Paper portfolio</h2>
+<div class="tiles">
+  <div class="tile"><div class="k">Fake bankroll</div><div class="v">${{ '{:,.2f}'.format(fs.money.bankroll) }}</div></div>
+  <div class="tile"><div class="k">Realized P&amp;L</div><div class="v {{ 'pos' if fs.total_pnl > 0 else 'neg' if fs.total_pnl < 0 }}">${{ '{:+,.2f}'.format(fs.total_pnl) }}</div></div>
+  <div class="tile"><div class="k">Open bets</div><div class="v">{{ fs.open }}</div></div>
+  <div class="tile"><div class="k">Settled bets</div><div class="v">{{ fs.settled }}</div></div>
+  <div class="tile"><div class="k">Scorer runs</div><div class="v">{{ runs }}</div></div>
+</div>
+<h2>Progress toward the success criteria</h2>
+{% include "_criteria.html" %}
+</section>
+<h2>Latest scorer run</h2>
+{% if last_run %}
+<p class="note">{{ last_run.finished_at }} · model {{ last_run.model_version }} · {{ '{:,}'.format(last_run.markets_scored) }} markets scored ·
+{{ last_run.signals }} with a &gt;{{ (cfg.EDGE_THRESHOLD * 100)|round|int }}-point disagreement · {{ last_run.bets_placed }} paper bets placed</p>
+{% else %}<p class="empty">The scorer hasn't run yet.</p>{% endif %}
+{% endblock %}

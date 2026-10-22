@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block body %}
+<h1>Live Markets</h1>
+{% if scores %}
+<p class="lede">Open markets the model scored at {{ scores.scored_at }} (model {{ scores.model_version }}): in the universe, ≥ ${{ '{:,.0f}'.format(cfg.MIN_VOLUME_USD) }} volume, ending within {{ cfg.SCORE_MAX_DAYS_TO_END }} days. Top {{ rows|length }} by volume.</p>
+<div class="tablewrap"><table>
+<tr><th>Market</th><th>Category</th><th>Ends</th><th class="n">Volume</th><th class="n">Market</th><th class="n">Model</th><th class="n">Diff</th></tr>
+{% for r in rows %}
+<tr><td class="q">{{ r.question }}</td><td>{{ r.category or '—' }}</td><td>{{ (r.end_date or '')[:10] }}</td>
+<td class="n">${{ '{:,.0f}'.format(r.volume_usd) }}</td><td class="n">{{ '{:.1%}'.format(r.mid) }}</td>
+<td class="n">{{ '{:.1%}'.format(r.model_prob_yes) }}</td>
+<td class="n {{ 'pos' if r.edge > 0.005 else 'neg' if r.edge < -0.005 else 'dim' }}">{{ '{:+.1f}'.format(r.edge * 100) }}</td></tr>
+{% endfor %}
+</table></div>
+{% else %}<p class="empty">No scorer snapshot yet — run <code>python -m pmodel score</code>.</p>{% endif %}
+{% endblock %}

@@ -71,3 +71,7 @@ MAX_STAKE_FRACTION = float(_env("MAX_STAKE_FRACTION", 0.05))
 MIN_STAKE_USD = float(_env("MIN_STAKE_USD", 1))
 # Only score markets scheduled to end within this many days (faster settlement).
 SCORE_MAX_DAYS_TO_END = int(_env("SCORE_MAX_DAYS_TO_END", 30))
+
+# Latest scorer output (every market scored, with model vs market). Overwritten
+# each run; feeds the dashboard. Not part of the tamper-evident ledger.
+LATEST_SCORES_PATH = Path(_env("LATEST_SCORES_PATH", DATA_DIR / "latest_scores.json"))

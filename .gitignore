@@ -26,3 +26,6 @@ reports/*
 .DS_Store
 .idea/
 .vscode/
+
+# Static dashboard export (rebuilt any time with `python -m pmodel build-site`)
+site/
