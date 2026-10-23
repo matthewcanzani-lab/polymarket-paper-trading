@@ -46,6 +46,21 @@ def edges(scores, limit=100):
     return rows[:limit]
 
 
+def strategy_of(model_version: str) -> str:
+    return "Weather (forecast blend)" if (model_version or "").startswith("weather") else \
+        "General (price/volume model)"
+
+
+def open_by_strategy(conn):
+    out = {}
+    for b in ledger_mod.open_bets(conn):
+        name = strategy_of(b["model_version"])
+        o = out.setdefault(name, {"strategy": name, "bets": 0, "stake": 0.0})
+        o["bets"] += 1
+        o["stake"] += b["stake"]
+    return sorted(out.values(), key=lambda o: -o["bets"])
+
+
 def bets(conn):
     """Every bet with its settlement (if any), newest first."""
     return [dict(r) for r in conn.execute(
@@ -69,7 +84,7 @@ def forward_stats(conn):
              "money": ledger_mod.bankroll(conn)}
     if not n:
         return dict(stats, brier=None, win_rate=None, return_on_stake=None, total_pnl=0.0,
-                    calibration=[], max_cal_gap=None, by_category=[])
+                    calibration=[], max_cal_gap=None, by_category=[], by_strategy=[])
     # Probability the model gave to the side we bought, and whether that side won.
     p_side = np.array([b["model_prob_yes"] if b["side"] == "YES" else 1 - b["model_prob_yes"]
                        for b in settled])
@@ -100,11 +115,19 @@ def forward_stats(conn):
         c["stake"] += b["stake"]
         c["pnl"] += b["pnl"]
     by_cat = sorted(cats.values(), key=lambda c: -c["bets"])
+    strat = {}
+    for b in settled:
+        name = strategy_of(b["model_version"])
+        c = strat.setdefault(name, {"strategy": name, "bets": 0, "stake": 0.0, "pnl": 0.0})
+        c["bets"] += 1
+        c["stake"] += b["stake"]
+        c["pnl"] += b["pnl"]
     return dict(stats,
                 brier=float(np.mean((p_yes - yes) ** 2)),
                 win_rate=float(np.mean([b["pnl"] > 0 for b in settled])),
                 return_on_stake=pnl / stake if stake else None,
-                total_pnl=pnl, calibration=cal, max_cal_gap=max_gap, by_category=by_cat)
+                total_pnl=pnl, calibration=cal, max_cal_gap=max_gap, by_category=by_cat,
+                by_strategy=sorted(strat.values(), key=lambda c: -c["bets"]))
 
 
 def success_criteria(fs):

@@ -12,9 +12,10 @@
 <h2>Cumulative P&amp;L</h2>
 {{ pnl_svg|safe }}
 <h2>Open bets ({{ open_bets|length }})</h2>
+{% if open_by_strategy %}<p class="note">{% for o in open_by_strategy %}{{ o.strategy }}: {{ o.bets }} bets, ${{ '{:,.2f}'.format(o.stake) }} at risk{% if not loop.last %} · {% endif %}{% endfor %}</p>{% endif %}
 {% if open_bets %}<div class="tablewrap"><table>
-<tr><th>Placed</th><th>Market</th><th>Side</th><th class="n">Model P(YES)</th><th class="n">Market</th><th class="n">Fill</th><th class="n">Stake</th><th>Ends</th></tr>
-{% for b in open_bets %}<tr><td>{{ b.placed_at[:16] }}</td><td class="q">{{ b.question }}</td><td>{{ b.side }}</td>
+<tr><th>Placed</th><th>Market</th><th>Strategy</th><th>Side</th><th class="n">Model P(YES)</th><th class="n">Market</th><th class="n">Fill</th><th class="n">Stake</th><th>Ends</th></tr>
+{% for b in open_bets %}<tr><td>{{ b.placed_at[:16] }}</td><td class="q">{{ b.question }}</td><td>{{ 'Weather' if b.model_version.startswith('weather') else 'General' }}</td><td>{{ b.side }}</td>
 <td class="n">{{ '{:.1%}'.format(b.model_prob_yes) }}</td><td class="n">{{ '{:.1%}'.format(b.market_mid) }}</td>
 <td class="n">{{ '{:.3f}'.format(b.fill_price) }}</td><td class="n">${{ '{:,.2f}'.format(b.stake) }}</td><td>{{ (b.end_date or '')[:10] }}</td></tr>{% endfor %}
 </table></div>{% else %}<p class="empty">No open bets.</p>{% endif %}

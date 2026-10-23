@@ -57,6 +57,7 @@ def create_app(ledger_path=None, scores_path=None, models_dir=MODELS_DIR):
             "portfolio.html", **ctx("portfolio.html"), fs=data.forward_stats(c),
             pnl_svg=charts.pnl_chart(data.pnl_curve(c), config.BANKROLL_START_USD),
             open_bets=[b for b in all_bets if b["settled_at"] is None],
+            open_by_strategy=data.open_by_strategy(c),
             settled=[b for b in all_bets if b["settled_at"] is not None])
 
     @app.route("/stats.html")
