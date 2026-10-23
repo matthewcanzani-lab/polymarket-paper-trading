@@ -108,6 +108,27 @@ def cmd_build_site(args):
     print(f"Static dashboard written to {out}/index.html — open it in any browser.")
 
 
+def cmd_weather_collect(args):
+    from pmodel.weather import collect
+    conn = db.connect()
+    print("markets:", collect.collect_markets(conn, args.start, args.end))
+    print("forecast rows:", collect.collect_forecasts(conn, args.start, args.end))
+    if args.prices_from:
+        print("priced:", collect.collect_prices(conn, args.prices_from, args.end))
+
+
+def cmd_weather_backtest(args):
+    import json
+    from pmodel.weather import backtest
+    res, _ = backtest.run(db.connect())
+    out = config.PROJECT_ROOT / "models" / "weather" / "backtest_results.json"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps({"result_type": "BACKTEST - historical, not forward paper results",
+                               **res}, indent=2, default=str))
+    print(json.dumps({k: v for k, v in res.items() if k != "calibration"}, indent=1, default=str))
+    print(f"Saved {out}")
+
+
 def cmd_status(args):
     conn = db.connect()
     q = lambda sql: conn.execute(sql).fetchone()[0]
@@ -165,6 +186,14 @@ def main():
         if name == "score":
             s.add_argument("--workers", type=int, default=8)
         s.set_defaults(func=func)
+    s = sub.add_parser("weather-collect", help="collect temperature markets, forecasts (+ prices)")
+    s.add_argument("--start", required=True)
+    s.add_argument("--end", required=True)
+    s.add_argument("--prices-from", help="also fetch price history for markets from this date")
+    s.set_defaults(func=cmd_weather_collect)
+    sub.add_parser("weather-backtest", help="one-shot backtest of the weather model").set_defaults(
+        func=cmd_weather_backtest)
+
     s = sub.add_parser("dashboard", help="run the Flask dashboard locally")
     s.add_argument("--port", type=int, default=5000)
     s.set_defaults(func=cmd_dashboard)

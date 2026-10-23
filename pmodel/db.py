@@ -96,6 +96,45 @@ CREATE TABLE IF NOT EXISTS trade_buckets (
     PRIMARY KEY (platform, market_id, hour_ts)
 );
 
+-- Daily temperature markets, parsed (see sources/polymarket_weather.py).
+CREATE TABLE IF NOT EXISTS weather_markets (
+    market_id TEXT PRIMARY KEY,
+    event_id TEXT NOT NULL,
+    city TEXT NOT NULL,
+    kind TEXT NOT NULL,           -- high | low
+    unit TEXT NOT NULL,           -- C | F
+    lo REAL NOT NULL,             -- inclusive whole degrees; -inf/inf stored as -1e9/1e9
+    hi REAL NOT NULL,
+    day TEXT NOT NULL,            -- local date measured
+    station TEXT,
+    yes_token_id TEXT,
+    created_at TEXT,
+    closed_time TEXT,
+    volume_usd REAL,
+    yes_payout REAL,              -- 1/0 when cleanly resolved, else NULL
+    history_fetched_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_weather_day ON weather_markets (station, day);
+
+-- Forecasts as issued (sources/openmeteo.py). Usable only at/after issued_by_utc.
+CREATE TABLE IF NOT EXISTS weather_forecasts (
+    station TEXT NOT NULL,
+    day TEXT NOT NULL,
+    lead INTEGER NOT NULL,        -- days between forecast and the hours it predicts
+    tmax_c REAL NOT NULL,
+    tmin_c REAL NOT NULL,
+    tz TEXT NOT NULL,
+    issued_by_utc TEXT NOT NULL,
+    PRIMARY KEY (station, day, lead)
+);
+
+CREATE TABLE IF NOT EXISTS weather_stations (
+    station TEXT PRIMARY KEY,
+    lat REAL NOT NULL,
+    lon REAL NOT NULL,
+    name TEXT
+);
+
 CREATE INDEX IF NOT EXISTS idx_markets_closed_volume ON markets (closed, volume_usd);
 """
 
