@@ -26,9 +26,16 @@ class LoadedModel:
         return self.booster.predict(d, iteration_range=(0, self.best_iteration + 1))
 
 
+def versions(models_dir=MODELS_DIR):
+    """General-model version folders (v<timestamp>/ with a meta.json), oldest first.
+    Other folders (e.g. models/weather/) are ignored."""
+    return sorted(p for p in models_dir.iterdir()
+                  if p.is_dir() and p.name.startswith("v") and (p / "meta.json").exists())
+
+
 def latest(models_dir=MODELS_DIR) -> LoadedModel:
     """Newest version that hasn't been marked superseded."""
-    for path in sorted((p for p in models_dir.iterdir() if p.is_dir()), reverse=True):
+    for path in reversed(versions(models_dir)):
         meta = json.loads((path / "meta.json").read_text())
         if not meta.get("superseded"):
             return LoadedModel(path)

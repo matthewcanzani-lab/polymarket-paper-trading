@@ -177,3 +177,14 @@ def test_total_exposure_cap(tmp_path):
     assert money["available"] == pytest.approx(500 - 468)     # 50% cap binds before cash
     ledger.append_bet(conn, _bet(bet_id="b9", market_id="9"))
     assert ledger.bankroll(conn)["available"] == 0.0
+
+
+def test_model_registry_ignores_other_folders(tmp_path):
+    import json
+    from pmodel.model import registry
+    (tmp_path / "weather").mkdir()                      # sorts after "v..." folders
+    (tmp_path / "weather" / "weather-v1.json").write_text("{}")
+    for v, sup in (("v20260101_000000", None), ("v20260201_000000", "leaky")):
+        (tmp_path / v).mkdir()
+        (tmp_path / v / "meta.json").write_text(json.dumps({"version": v, "superseded": sup}))
+    assert [p.name for p in registry.versions(tmp_path)] == ["v20260101_000000", "v20260201_000000"]

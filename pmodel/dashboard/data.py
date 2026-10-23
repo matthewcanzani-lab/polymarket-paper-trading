@@ -137,7 +137,8 @@ def backtests(models_dir):
     out = []
     if not models_dir.exists():
         return out
-    for path in sorted((p for p in models_dir.iterdir() if p.is_dir()), reverse=True):
+    from pmodel.model.registry import versions
+    for path in reversed(versions(models_dir)):
         try:
             meta = json.loads((path / "meta.json").read_text())
         except (FileNotFoundError, ValueError):

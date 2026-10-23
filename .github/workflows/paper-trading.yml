@@ -26,6 +26,8 @@ jobs:
           cache: pip
       - run: pip install -r requirements.txt
 
+      - name: Run the test suite (don't trade if anything is broken)
+        run: python -m pytest -q
       - name: Check the ledger hasn't been tampered with
         run: python -m pmodel ledger
       - name: Settle bets on resolved markets
