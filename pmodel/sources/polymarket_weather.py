@@ -26,7 +26,8 @@ _Q = re.compile(
     r"(?:be )?(?:between )?(?P<a>-?\d+)\s*(?:[-–]\s*(?P<b>-?\d+))?\s*°\s*(?P<unit>[CF])"
     r"(?P<tail> or higher| or below)? on (?P<month>[A-Za-z]+) (?P<day>\d+)",
     re.IGNORECASE)
-_STATION = re.compile(r"(?:site=|/(?:history/daily/[a-z]{2}/[^/]+/))([A-Za-z0-9]{4})\b")
+_STATION = re.compile(
+    r"(?:site=|ids=|/history/daily/(?:[a-z-]+/)+|Airport \()([A-Za-z0-9]{4})\b")
 
 
 @dataclass
@@ -71,6 +72,11 @@ def parse_question(question: str, year: int):
 def station_from_rules(description: str) -> Optional[str]:
     m = _STATION.search(description or "")
     return m.group(1).upper() if m else None
+
+
+def uses_metar_rule(description: str) -> bool:
+    """Markets from 23 Oct 2026 resolve on hourly routine METAR reports."""
+    return "METAR" in (description or "")
 
 
 def _year_hint(raw_event: dict) -> int:

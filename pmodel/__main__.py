@@ -129,6 +129,16 @@ def cmd_weather_backtest(args):
     print(f"Saved {out}")
 
 
+def cmd_weather_fit(args):
+    from pmodel.weather import artifact
+    print("Saved", artifact.save(artifact.fit(db.connect())))
+
+
+def cmd_weather_score(args):
+    from pmodel.weather import scorer
+    scorer.run(_ledger(args))
+
+
 def cmd_status(args):
     conn = db.connect()
     q = lambda sql: conn.execute(sql).fetchone()[0]
@@ -191,6 +201,11 @@ def main():
     s.add_argument("--end", required=True)
     s.add_argument("--prices-from", help="also fetch price history for markets from this date")
     s.set_defaults(func=cmd_weather_collect)
+    sub.add_parser("weather-fit", help="fit + save a new weather model version (needs market DB)").set_defaults(
+        func=cmd_weather_fit)
+    s = sub.add_parser("weather-score", help="score open temperature markets and log PAPER bets")
+    s.add_argument("--ledger", help="ledger file (default data/predictions.db)")
+    s.set_defaults(func=cmd_weather_score)
     sub.add_parser("weather-backtest", help="one-shot backtest of the weather model").set_defaults(
         func=cmd_weather_backtest)
 

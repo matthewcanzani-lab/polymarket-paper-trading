@@ -19,7 +19,7 @@ ALLOWED_HOSTS = {
     "clob.polymarket.com",       # price history (public, read-only endpoint)
     "data-api.polymarket.com",   # public trade history (read-only)
     "previous-runs-api.open-meteo.com",  # archived weather forecasts (as issued)
-    "aviationweather.gov",       # weather-station coordinates
+    "aviationweather.gov",       # weather-station coordinates and airport reports (METAR)
 }
 
 _local = threading.local()  # one Session per thread (Sessions aren't guaranteed thread-safe)

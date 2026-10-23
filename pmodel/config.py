@@ -75,3 +75,11 @@ SCORE_MAX_DAYS_TO_END = int(_env("SCORE_MAX_DAYS_TO_END", 30))
 # Latest scorer output (every market scored, with model vs market). Overwritten
 # each run; feeds the dashboard. Not part of the tamper-evident ledger.
 LATEST_SCORES_PATH = Path(_env("LATEST_SCORES_PATH", DATA_DIR / "latest_scores.json"))
+
+# Weather strategy: at most this share of the bankroll on one city-day (its
+# temperature ranges are mutually exclusive, so bets on them move together).
+WEATHER_MAX_EVENT_FRACTION = float(_env("WEATHER_MAX_EVENT_FRACTION", 0.05))
+
+# Never have more than this share of the bankroll riding on open bets at once
+# (all strategies together). Stops many individually-small bets adding up.
+MAX_OPEN_EXPOSURE_FRACTION = float(_env("MAX_OPEN_EXPOSURE_FRACTION", 0.5))

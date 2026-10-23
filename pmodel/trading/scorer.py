@@ -29,6 +29,7 @@ from pmodel.trading import ledger
 from pmodel.trading.sizing import no_side_levels, size_bet
 
 SETTINGS_KEYS = ("EDGE_THRESHOLD", "KELLY_MULTIPLIER", "SLIPPAGE_PER_SHARE", "MAX_STAKE_FRACTION",
+                 "MAX_OPEN_EXPOSURE_FRACTION",
                  "MIN_STAKE_USD", "SCORE_MAX_DAYS_TO_END", "MIN_VOLUME_USD", "BANKROLL_START_USD")
 
 
@@ -129,7 +130,7 @@ def run(source: MarketSource, conn, workers=8, log=print, snapshot_path=None) ->
         side = "YES" if p > mid else "NO"
         q = p if side == "YES" else 1 - p
         levels = book.asks if side == "YES" else no_side_levels(book.bids)
-        sized = size_bet(q, levels, money["bankroll"], money["cash"], config)
+        sized = size_bet(q, levels, money["bankroll"], money["available"], config)
         if sized is None or sized["shares"] < book.min_order_shares:
             row["status"] = "edge, but not worth it after fill costs"
             continue
@@ -146,6 +147,7 @@ def run(source: MarketSource, conn, workers=8, log=print, snapshot_path=None) ->
         }
         ledger.append_bet(conn, fields)
         money["cash"] -= sized["stake"]
+        money["available"] -= sized["stake"]
         bets.append(fields)
         log(f"  PAPER BET {side} ${sized['stake']:.2f} @ {sized['fill_price']:.3f} "
             f"(model {p:.1%} vs market {mid:.1%}) — {market.question[:70]}")

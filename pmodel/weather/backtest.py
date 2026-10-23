@@ -226,3 +226,19 @@ def run(conn, log=print):
             {"band": str(k), "forecast": float(g[col].mean()), "actual": float(g.label.mean()), "n": len(g)}
             for k, g in test.groupby(bins, observed=True)]
     return res, test
+
+
+def price_moves(conn, snaps, hours=12):
+    """How many times each snapshot's price changed in the `hours` before t (only
+    fully-known hourly points). A price that never moves is usually a placeholder
+    midpoint of a wide spread, not a price anyone traded at."""
+    cache, out = {}, []
+    for mid, t in zip(snaps.market_id, snaps.t):
+        if mid not in cache:
+            cache[mid] = np.array(conn.execute(
+                "SELECT ts, price FROM price_history WHERE platform='polymarket' AND market_id=? "
+                "ORDER BY ts", (mid,)).fetchall() or np.empty((0, 2)))
+        a = cache[mid]
+        k = a[(a[:, 0] + H <= t) & (a[:, 0] >= t - hours * H)] if len(a) else a
+        out.append(int((np.abs(np.diff(k[:, 1])) > 0.0005).sum()) if len(k) > 1 else 0)
+    return np.array(out)

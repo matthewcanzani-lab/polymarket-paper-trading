@@ -162,8 +162,11 @@ def bankroll(conn) -> dict:
         """SELECT COALESCE(SUM(b.stake), 0) FROM bets b
            LEFT JOIN settlements s USING (bet_id) WHERE s.bet_id IS NULL""").fetchone()[0]
     equity = config.BANKROLL_START_USD + realized
+    # "available" = what new bets may use: cash, but never past the exposure cap.
+    available = max(min(equity - open_stake,
+                        config.MAX_OPEN_EXPOSURE_FRACTION * equity - open_stake), 0.0)
     return {"bankroll": equity, "open_stake": open_stake, "cash": equity - open_stake,
-            "realized_pnl": realized}
+            "available": available, "realized_pnl": realized}
 
 
 def has_bet_on(conn, platform: str, market_id: str) -> bool:

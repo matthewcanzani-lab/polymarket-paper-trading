@@ -166,3 +166,14 @@ def test_scorer_uses_live_midpoint_not_stale_history(monkeypatch):
     f = scorer._features_now(src, m, 1_792_200_000)
     assert f["price"] == pytest.approx(0.98)
     assert f["staleness_h"] == 0
+
+
+def test_total_exposure_cap(tmp_path):
+    conn = ledger.connect(tmp_path / "p.db")
+    for i in range(9):   # $52 x 9 = $468 open
+        ledger.append_bet(conn, _bet(bet_id=f"b{i}", market_id=str(i)))
+    money = ledger.bankroll(conn)
+    assert money["cash"] == pytest.approx(1000 - 468)
+    assert money["available"] == pytest.approx(500 - 468)     # 50% cap binds before cash
+    ledger.append_bet(conn, _bet(bet_id="b9", market_id="9"))
+    assert ledger.bankroll(conn)["available"] == 0.0

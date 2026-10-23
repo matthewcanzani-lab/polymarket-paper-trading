@@ -96,3 +96,82 @@ def test_bets_charge_costs_and_bet_once_per_market():
     out = bt.bets(test, np.array([0.40, 0.45, 0.52]), threshold=0.05, cost=0.02)
     assert list(out.market_id) == ["a"]                      # b: gap too small
     assert out.ret.iloc[0] == pytest.approx(1 / 0.32 - 1)    # paid 30c + 2c
+
+
+# ---------------------------------------------------------------- live scorer
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
+
+from pmodel.sources.base import OrderBook
+from pmodel.trading import ledger
+from pmodel.weather import scorer as ws
+
+
+def test_window_and_lead():
+    tz = ZoneInfo("America/New_York")
+    day = "2026-10-10"
+    at = lambda s: datetime.fromisoformat(s).replace(tzinfo=tz)
+    assert not ws.in_window(at("2026-10-08T11:59"), day, tz)   # too early
+    assert ws.in_window(at("2026-10-08T12:00"), day, tz)
+    assert ws.in_window(at("2026-10-09T23:59"), day, tz)
+    assert not ws.in_window(at("2026-10-10T00:00"), day, tz)   # never on the day itself
+    end = at("2026-10-11T00:00")
+    assert ws.lead_for(at("2026-10-08T18:00"), end) == 3        # matches backtest snapshots
+    assert ws.lead_for(at("2026-10-09T12:00"), end) == 2
+
+
+def _event(bid=0.20, ask=0.22):
+    def mk(i, lo, hi, q):
+        return {"id": str(i), "question": q, "clobTokenIds": f'["tok{i}", "no{i}"]',
+                "outcomePrices": '["0.2", "0.8"]', "bestBid": bid, "bestAsk": ask,
+                "acceptingOrders": True, "closed": False, "volumeNum": 5000,
+                "description": "station https://www.weather.gov/wrh/timeseries?site=klga"}
+    return {"id": "e1", "endDate": "2026-10-10T12:00:00Z", "markets": [
+        mk(1, 76, 77, "Will the highest temperature in New York City be between 76-77°F on October 10?"),
+        mk(2, 78, 79, "Will the highest temperature in New York City be between 78-79°F on October 10?")]}
+
+
+class _Src:
+    def __init__(self, book):
+        self.book = book
+    def order_book(self, market):
+        return self.book
+
+
+def _params():
+    return {"version": "weather-vTEST", "blend_weights": [1.0, 1.0, 0.0], "scale": 1.0, "df": 6.0,
+            "global": {"high|1": [0.0, 1.0], "high|2": [0.0, 1.0], "high|3": [0.0, 1.0]},
+            "by_key": {}, "stations": {"KLGA": {"lat": 40.78, "lon": -73.88, "name": "LGA", "tz": "America/New_York"}}}
+
+
+def _patch(monkeypatch, forecast_c):
+    monkeypatch.setattr(ws.artifact, "load_latest",
+                        lambda: (_params(), ws.artifact.to_error_model(_params())))
+    monkeypatch.setattr(ws.pw, "iter_events", lambda *a, **k: iter([_event()]))
+    monkeypatch.setattr(ws, "current_forecasts",
+                        lambda lat, lon, start, end: {"2026-10-10": (forecast_c, 10.0)})
+
+
+def test_weather_scorer_bets_within_caps_and_once(tmp_path, monkeypatch):
+    _patch(monkeypatch, forecast_c=(76.5 - 32) * 5 / 9)   # forecast right on the 76-77°F range
+    conn = ledger.connect(tmp_path / "p.db")
+    now = datetime(2026, 10, 9, 16, 0, tzinfo=timezone.utc)  # 12:00 NY the day before
+    src = _Src(OrderBook(bids=[(0.20, 5000)], asks=[(0.22, 5000)]))
+    out = ws.run(conn, log=lambda *a: None, now=now, source=src)
+    assert out["bets_placed"] >= 1
+    rows = conn.execute("SELECT * FROM bets").fetchall()
+    assert sum(r["stake"] for r in rows) <= 0.05 * 1000 + 1e-6   # per city-day cap
+    assert all(r["fill_price"] >= 0.23 - 1e-9 for r in rows if r["side"] == "YES")  # ask + 1c
+    ws.run(conn, log=lambda *a: None, now=now, source=src)        # second run
+    ids = [r["market_id"] for r in conn.execute("SELECT market_id FROM bets")]
+    assert len(ids) == len(set(ids))                               # never two bets on one market
+    assert ledger.verify(conn) == []
+
+
+def test_weather_scorer_never_bets_on_the_day(tmp_path, monkeypatch):
+    _patch(monkeypatch, forecast_c=(76.5 - 32) * 5 / 9)
+    conn = ledger.connect(tmp_path / "p.db")
+    now = datetime(2026, 10, 10, 14, 0, tzinfo=timezone.utc)  # 10:00 NY on the day
+    out = ws.run(conn, log=lambda *a: None, now=now,
+                 source=_Src(OrderBook(bids=[(0.20, 5000)], asks=[(0.22, 5000)])))
+    assert out == {"markets_scored": 0, "signals": 0, "bets_placed": 0}
