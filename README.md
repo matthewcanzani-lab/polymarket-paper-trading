@@ -1,4 +1,4 @@
-# polymarket-model-v2
+# Polymarket Paper Trading (model v2)
 
 A **paper-trading-only** prediction model for Polymarket. It reads public market
 data, estimates the true probability of YES, and logs *fake* bets so we can
@@ -9,6 +9,13 @@ build an honest, forward-tested track record.
 > `pmodel/safe_http.py`, which can only make GET requests to a short allowlist
 > of public read-only hosts. `tests/test_safety.py` fails if anyone adds order
 > or wallet code.
+
+**History:** an earlier version (v1, June 2026) reported beating the market,
+but it used final volume/liquidity as features, a random (not time-based)
+split, and a sentiment feature computed differently in training and live use.
+v2 rebuilt the pipeline to remove those look-ahead problems; see
+`models/v20261005_031649/SUPERSEDED.md` for how the same final-volume leak
+inflated v2's own first backtest.
 
 ## Status
 
@@ -35,11 +42,11 @@ These steps are for a Mac. On Linux they're the same minus Homebrew.
 2. **Get the code:**
    ```bash
    cd ~
-   git clone https://github.com/matthewcanzani/polymarket-model-v2.git
-   cd polymarket-model-v2
+   git clone https://github.com/matthewcanzani-lab/polymarket-paper-trading.git
+   cd polymarket-paper-trading
    ```
-   GitHub will ask you to sign in because the repo is private. The easiest way
-   is `brew install gh && gh auth login` before cloning.
+   The repo is public, so no sign-in is needed to clone it (you only need to
+   sign in to push changes: `brew install gh && gh auth login`).
 
 3. **Create the virtual environment** (a private folder of Python packages just
    for this project, so it can't clash with anything else on the computer):
@@ -226,7 +233,7 @@ the prediction log. The prediction log is the one thing that can't be recreated:
 it proves each prediction was made *before* the market resolved.
 
 **Backups:** set `BACKUP_DIR` in `.env` to an iCloud Drive folder, e.g.
-`~/Library/Mobile Documents/com~apple~CloudDocs/polymarket-model-v2-backups`,
+`~/Library/Mobile Documents/com~apple~CloudDocs/polymarket-paper-trading-backups`,
 then run `python -m pmodel backup`. Phase 5 schedules this nightly. Keeps the
 newest 60 copies.
 
