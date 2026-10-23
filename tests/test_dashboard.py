@@ -95,3 +95,16 @@ def test_site_uses_only_relative_paths(tmp_path):
         html = page.read_text()
         assert not re.search(r'''(?:href|src)=["']/(?!/)''', html), page.name
         assert "url(/" not in html, page.name
+
+
+def test_ownership_footer_on_every_page(tmp_path):
+    _seed(tmp_path / "p.db")
+    footer = "Built and maintained by Matthew Canzani since June 2026"
+    link = '<a href="https://github.com/matthewcanzani-lab" rel="noopener">github.com/matthewcanzani-lab</a>'
+    client = create_app(ledger_path=tmp_path / "p.db").test_client()
+    for page, _ in PAGES:                                    # Flask pages
+        html = client.get(f"/{page}").get_data(as_text=True)
+        assert footer in html and link in html, page
+    out = build_site(tmp_path / "site", ledger_path=tmp_path / "p.db")
+    for f in out.iterdir():                                  # static export
+        assert footer in f.read_text() and link in f.read_text(), f.name

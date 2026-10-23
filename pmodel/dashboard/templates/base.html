@@ -97,6 +97,9 @@ td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; }
 .stale { margin-top: 8px; background: var(--bad); color: #ffffff; border-radius: 8px;
   padding: 10px 12px; font-weight: 600; }
 footer { color: var(--muted); font-size: 12px; padding-block: 24px; border-top: 1px solid var(--line); }
+footer p { margin: 0 0 8px; }
+footer .owner { color: var(--ink-2); font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; }
+footer .owner a { color: var(--accent); text-underline-offset: 2px; }
 img.bt { max-width: 520px; width: 100%; border-radius: 6px; border: 1px solid var(--line); }
 </style>
 </head>
@@ -113,8 +116,12 @@ img.bt { max-width: 520px; width: 100%; border-radius: 6px; border: 1px solid va
     numbers may be out of date. The automation may have stopped.</div>
 </div>
 <main><div class="wrap">{% block body %}{% endblock %}</div></main>
-<footer><div class="wrap">Generated {{ generated }}. FORWARD = predictions logged before the market
-resolved (the honest record). BACKTEST = historical simulation, shown separately and never mixed in.</div></footer>
+<footer><div class="wrap">
+<p class="owner">Built and maintained by Matthew Canzani since June 2026 ·
+<a href="https://github.com/matthewcanzani-lab" rel="noopener">github.com/matthewcanzani-lab</a></p>
+<p>Generated {{ generated }}. FORWARD = predictions logged before the market
+resolved (the honest record). BACKTEST = historical simulation, shown separately and never mixed in.</p>
+</div></footer>
 <script>
 // Label every table cell with its column name (used by the phone layout).
 document.querySelectorAll(".tablewrap table").forEach(function (t) {

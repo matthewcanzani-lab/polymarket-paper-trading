@@ -1,5 +1,8 @@
 # Polymarket Paper Trading (model v2)
 
+© 2026 Matthew Canzani. All rights reserved. Viewing permitted;
+reuse is not. See [LICENSE](LICENSE).
+
 **Live dashboard: https://matthewcanzani-lab.github.io/polymarket-paper-trading/**
 (updated automatically twice a day; shows a red warning if the last run is more
 than 36 hours old)
