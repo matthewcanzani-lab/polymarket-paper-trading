@@ -26,6 +26,30 @@ def load_scores(path=None):
         return None
 
 
+def load_weather_scores(path=None):
+    return load_scores(path or config.LATEST_WEATHER_SCORES_PATH)
+
+
+def age_hours(iso, now=None):
+    """Hours since an ISO-8601 UTC timestamp (None if missing)."""
+    if not iso:
+        return None
+    from datetime import datetime, timezone
+    t = datetime.strptime(iso, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    return ((now or datetime.now(timezone.utc)) - t).total_seconds() / 3600
+
+
+def latest_runs(conn):
+    """Most recent run of each strategy, newest first."""
+    seen, out = set(), []
+    for r in conn.execute("SELECT * FROM runs ORDER BY seq DESC"):
+        name = strategy_of(r["model_version"])
+        if name not in seen:
+            seen.add(name)
+            out.append(dict(r, strategy=name))
+    return out
+
+
 def _mid(m):
     if m.get("best_bid") is not None and m.get("best_ask") is not None:
         return (m["best_bid"] + m["best_ask"]) / 2

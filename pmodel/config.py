@@ -83,3 +83,8 @@ WEATHER_MAX_EVENT_FRACTION = float(_env("WEATHER_MAX_EVENT_FRACTION", 0.05))
 # Never have more than this share of the bankroll riding on open bets at once
 # (all strategies together). Stops many individually-small bets adding up.
 MAX_OPEN_EXPOSURE_FRACTION = float(_env("MAX_OPEN_EXPOSURE_FRACTION", 0.5))
+
+# Latest weather-scorer output (every temperature market scored, with the reason
+# each one was or wasn't bet). Overwritten each run; feeds the dashboard.
+LATEST_WEATHER_SCORES_PATH = Path(_env("LATEST_WEATHER_SCORES_PATH",
+                                       DATA_DIR / "latest_weather_scores.json"))

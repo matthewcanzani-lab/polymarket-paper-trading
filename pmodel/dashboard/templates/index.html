@@ -16,9 +16,17 @@
 <h2>Progress toward the success criteria</h2>
 {% include "_criteria.html" %}
 </section>
-<h2>Latest scorer run</h2>
-{% if last_run %}
-<p class="note">{{ last_run.finished_at }} · model {{ last_run.model_version }} · {{ '{:,}'.format(last_run.markets_scored) }} markets scored ·
-{{ last_run.signals }} with a &gt;{{ (cfg.EDGE_THRESHOLD * 100)|round|int }}-point disagreement · {{ last_run.bets_placed }} paper bets placed</p>
-{% else %}<p class="empty">The scorer hasn't run yet.</p>{% endif %}
+<h2>Latest run of each strategy</h2>
+{% if runs_by_strategy %}<div class="tablewrap"><table>
+<tr><th>Strategy</th><th>Finished (UTC)</th><th class="n">Markets scored</th><th class="n">Disagreements &gt; {{ (cfg.EDGE_THRESHOLD * 100)|round|int }} pts</th><th class="n">Paper bets placed</th></tr>
+{% for r in runs_by_strategy %}<tr><td>{{ r.strategy }}</td><td>{{ r.finished_at[:16].replace('T', ' ') }}</td>
+<td class="n">{{ '{:,}'.format(r.markets_scored) }}</td><td class="n">{{ r.signals }}</td><td class="n">{{ r.bets_placed }}</td></tr>{% endfor %}
+</table></div>
+{% if fs.money.available < cfg.MIN_STAKE_USD and fs.open %}
+<p class="note"><strong>Why so few new bets:</strong> {{ '{:.0%}'.format(cfg.MAX_OPEN_EXPOSURE_FRACTION) }} of the bankroll
+(${{ '{:,.2f}'.format(fs.money.open_stake) }}) is already riding on open bets, which is the most the rules allow.
+New bets resume as those settle.</p>{% endif %}
+<p class="note">The general model copies the market price, so it almost never disagrees by 5+ points. That is expected (see Model Stats).</p>
+{% else %}<p class="empty">No runs yet.</p>{% endif %}
+
 {% endblock %}

@@ -73,7 +73,7 @@ def _market(m: pw.TempMarket) -> Market:
                   m.volume_usd, 0.0, None, None, None)
 
 
-def run(conn, log=print, now=None, source=None) -> dict:
+def run(conn, log=print, now=None, source=None, snapshot_path=None) -> dict:
     now = now or datetime.now(timezone.utc)
     source = source or PolymarketSource()
     params, model = artifact.load_latest()
@@ -82,8 +82,8 @@ def run(conn, log=print, now=None, source=None) -> dict:
     log(f"Weather scoring with {version} (run {run_id})")
     money = ledger.bankroll(conn)
     event_cap = config.WEATHER_MAX_EVENT_FRACTION * money["bankroll"]
-    scored = signals = 0
-    bets = []
+    scored = signals = blocked_by_cap = 0
+    bets, snapshot = [], []
     events = pw.iter_events(False, (now - timedelta(days=1)).strftime("%Y-%m-%dT00:00:00Z"),
                             (now + timedelta(days=4)).strftime("%Y-%m-%dT23:59:59Z"))
     forecast_cache, failed = {}, set()
@@ -127,14 +127,22 @@ def run(conn, log=print, now=None, source=None) -> dict:
             f_c = tmax if m.kind == "high" else tmin
             p_fc = model.prob(f_c, m.station, m.kind, lead, m.unit, m.lo, m.hi)
             p = float(blend(w, (bid + ask) / 2, p_fc))
+            row = {"market_id": m.market_id, "question": raw.get("question") or "",
+                   "city": m.city, "day": m.day, "kind": m.kind, "category": "Weather",
+                   "end_date": f"{m.day}T12:00:00Z", "volume_usd": m.volume_usd,
+                   "last_price": (bid + ask) / 2, "best_bid": bid, "best_ask": ask,
+                   "forecast_c": f_c, "model_prob_yes": p, "status": "no edge"}
+            snapshot.append(row)
             if abs(p - (bid + ask) / 2) <= config.EDGE_THRESHOLD:
                 continue
             book = source.order_book(_market(m))
             if not book or not book.bids or not book.asks:
+                row["status"] = "edge, but empty order book"
                 continue
             bid, ask = book.bids[0][0], book.asks[0][0]
             mid = (bid + ask) / 2
             p = float(blend(w, mid, p_fc))  # re-blend with the live book midpoint
+            row.update(best_bid=bid, best_ask=ask, last_price=mid, model_prob_yes=p)
             if abs(p - mid) <= config.EDGE_THRESHOLD:
                 continue
             signals += 1
@@ -144,7 +152,15 @@ def run(conn, log=print, now=None, source=None) -> dict:
             room = min(money["available"], event_cap - spent_on_event)
             sized = size_bet(q, levels, money["bankroll"], room, config)
             if sized is None or sized["shares"] < book.min_order_shares:
+                if room < config.MIN_STAKE_USD:
+                    blocked_by_cap += 1
+                    row["status"] = ("edge, but the 50% at-risk cap is reached"
+                                     if money["available"] < config.MIN_STAKE_USD
+                                     else "edge, but this city-day's 5% cap is reached")
+                else:
+                    row["status"] = "edge, but not worth it after fill costs"
                 continue
+            row["status"] = f"PAPER BET {side}"
             q_text = (raw.get("question") or "")
             fields = {
                 "bet_id": f"bet-{uuid.uuid4().hex[:12]}", "run_id": run_id, "placed_at": utc_now(),
@@ -173,7 +189,14 @@ def run(conn, log=print, now=None, source=None) -> dict:
             "MAX_OPEN_EXPOSURE_FRACTION": config.MAX_OPEN_EXPOSURE_FRACTION,
             "code_commit": _git_commit()})})
     conn.commit()
-    summary = {"markets_scored": scored, "signals": signals, "bets_placed": len(bets)}
+    summary = {"markets_scored": scored, "signals": signals, "bets_placed": len(bets),
+               "blocked_by_risk_caps": blocked_by_cap}
+    if snapshot_path:
+        snapshot_path.parent.mkdir(parents=True, exist_ok=True)
+        snapshot_path.write_text(json.dumps({
+            "run_id": run_id, "scored_at": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "model_version": version, "edge_threshold": config.EDGE_THRESHOLD,
+            "summary": summary, "markets": snapshot}))
     if failed:
         summary["stations_without_forecast"] = len(failed)
     log(f"Weather run finished: {summary}")

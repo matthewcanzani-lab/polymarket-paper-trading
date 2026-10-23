@@ -1,0 +1,4 @@
+{# usage: {% with ts=..., what="..." %}{% include "_age.html" %}{% endwith %} #}
+{% set h = age_hours(ts) %}
+{% if h is not none and h > 24 %}<div class="alert">This {{ what }} is from {{ ts[:16].replace('T', ' ') }} UTC, {{ (h / 24)|round(1) }} days ago. It is not current.</div>
+{% elif h is not none %}<p class="note">{{ what|capitalize }} as of {{ ts[:16].replace('T', ' ') }} UTC ({{ h|round|int }} h ago).</p>{% endif %}

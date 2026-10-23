@@ -2,7 +2,8 @@
 {% block body %}
 <h1>Live Markets</h1>
 {% if scores %}
-<p class="lede">Open markets the model scored at {{ scores.scored_at }} (model {{ scores.model_version }}): in the universe, ≥ ${{ '{:,.0f}'.format(cfg.MIN_VOLUME_USD) }} volume, ending within {{ cfg.SCORE_MAX_DAYS_TO_END }} days. Top {{ rows|length }} by volume.</p>
+{% with ts=scores.scored_at, what="snapshot" %}{% include "_age.html" %}{% endwith %}
+<p class="lede">Open markets the general model scored at {{ scores.scored_at }} (model {{ scores.model_version }}): in the universe, ≥ ${{ '{:,.0f}'.format(cfg.MIN_VOLUME_USD) }} volume, ending within {{ cfg.SCORE_MAX_DAYS_TO_END }} days. Top {{ rows|length }} by volume.</p>
 <div class="tablewrap"><table>
 <tr><th>Market</th><th>Category</th><th>Ends</th><th class="n">Volume</th><th class="n">Market</th><th class="n">Model</th><th class="n">Diff</th></tr>
 {% for r in rows %}

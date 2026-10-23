@@ -1,7 +1,26 @@
 {% extends "base.html" %}
 {% block body %}
 <h1>Edge Finder</h1>
+<h2>Weather strategy</h2>
+{% if weather %}
+{% with ts=weather.scored_at, what="weather snapshot" %}{% include "_age.html" %}{% endwith %}
+<p class="lede">Temperature ranges where the forecast blend and the live market midpoint differ most. A paper bet needs a gap above {{ (weather.edge_threshold * 100)|round|int }} points, a positive expected value after walking the live order book plus {{ (cfg.SLIPPAGE_PER_SHARE * 100)|round|int }}¢, and room under the risk caps.</p>
+{% set s = weather.summary %}
+<p class="note">{{ '{:,}'.format(s.markets_scored) }} ranges scored · {{ s.signals }} gaps above the threshold · {{ s.bets_placed }} paper bets · {{ s.blocked_by_risk_caps }} held back by the risk caps.</p>
+<div class="tablewrap"><table>
+<tr><th>Market</th><th class="n">Forecast</th><th class="n">Market</th><th class="n">Model</th><th class="n">Gap (pts)</th><th>Outcome of this run</th></tr>
+{% for r in weather_rows %}
+<tr><td class="q">{{ r.question }}</td><td class="n">{{ '{:.1f}'.format(r.forecast_c) }}°C</td>
+<td class="n">{{ '{:.1%}'.format(r.mid) }}</td><td class="n">{{ '{:.1%}'.format(r.model_prob_yes) }}</td>
+<td class="n {{ 'pos' if r.edge|abs > weather.edge_threshold else 'dim' }}">{{ '{:+.1f}'.format(r.edge * 100) }}</td>
+<td>{{ r.status }}</td></tr>
+{% endfor %}
+</table></div>
+{% else %}<p class="empty">No weather snapshot yet. The next automated run creates one.</p>{% endif %}
+
+<h2>General model</h2>
 {% if scores %}
+{% with ts=scores.scored_at, what="general-model snapshot" %}{% include "_age.html" %}{% endwith %}
 <p class="lede">Biggest disagreements between the model and the market midpoint (scored {{ scores.scored_at }}). A paper bet needs a gap above <strong>{{ (scores.edge_threshold * 100)|round|int }} points</strong> <em>and</em> a positive expected value after walking the order book plus {{ (cfg.SLIPPAGE_PER_SHARE * 100)|round|int }}¢ slippage.</p>
 {% set over = rows|selectattr('edge', 'gt', scores.edge_threshold)|list + rows|selectattr('edge', 'lt', -scores.edge_threshold)|list %}
 <p class="note">{{ over|length }} market(s) above the threshold in this run.</p>

@@ -156,8 +156,11 @@ def cmd_weather_refit(args):
 
 
 def cmd_weather_score(args):
+    from pathlib import Path
     from pmodel.weather import scorer
-    scorer.run(_ledger(args))
+    snapshot = Path(args.snapshot) if args.snapshot else (
+        None if args.ledger else config.LATEST_WEATHER_SCORES_PATH)
+    scorer.run(_ledger(args), snapshot_path=snapshot)
 
 
 def cmd_status(args):
@@ -231,6 +234,7 @@ def main():
     s.set_defaults(func=cmd_weather_refit)
     s = sub.add_parser("weather-score", help="score open temperature markets and log PAPER bets")
     s.add_argument("--ledger", help="ledger file (default data/predictions.db)")
+    s.add_argument("--snapshot", help="where to save the scored-markets snapshot for the dashboard")
     s.set_defaults(func=cmd_weather_score)
     sub.add_parser("weather-backtest", help="one-shot backtest of the weather model").set_defaults(
         func=cmd_weather_backtest)

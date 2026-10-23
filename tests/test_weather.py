@@ -157,8 +157,12 @@ def test_weather_scorer_bets_within_caps_and_once(tmp_path, monkeypatch):
     conn = ledger.connect(tmp_path / "p.db")
     now = datetime(2026, 10, 9, 16, 0, tzinfo=timezone.utc)  # 12:00 NY the day before
     src = _Src(OrderBook(bids=[(0.20, 5000)], asks=[(0.22, 5000)]))
-    out = ws.run(conn, log=lambda *a: None, now=now, source=src)
+    snap = tmp_path / "w.json"
+    out = ws.run(conn, log=lambda *a: None, now=now, source=src, snapshot_path=snap)
     assert out["bets_placed"] >= 1
+    import json
+    rows = json.loads(snap.read_text())["markets"]
+    assert any(r["status"].startswith("PAPER BET") for r in rows)
     rows = conn.execute("SELECT * FROM bets").fetchall()
     assert sum(r["stake"] for r in rows) <= 0.05 * 1000 + 1e-6   # per city-day cap
     assert all(r["fill_price"] >= 0.23 - 1e-9 for r in rows if r["side"] == "YES")  # ask + 1c
@@ -174,4 +178,4 @@ def test_weather_scorer_never_bets_on_the_day(tmp_path, monkeypatch):
     now = datetime(2026, 10, 10, 14, 0, tzinfo=timezone.utc)  # 10:00 NY on the day
     out = ws.run(conn, log=lambda *a: None, now=now,
                  source=_Src(OrderBook(bids=[(0.20, 5000)], asks=[(0.22, 5000)])))
-    assert out == {"markets_scored": 0, "signals": 0, "bets_placed": 0}
+    assert (out["markets_scored"], out["signals"], out["bets_placed"]) == (0, 0, 0)

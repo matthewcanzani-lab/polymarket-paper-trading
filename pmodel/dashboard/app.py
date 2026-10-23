@@ -15,11 +15,11 @@ PAGES = [("index.html", "Overview"), ("markets.html", "Live Markets"), ("edges.h
          ("portfolio.html", "Paper Portfolio"), ("stats.html", "Model Stats")]
 
 
-def create_app(ledger_path=None, scores_path=None, models_dir=MODELS_DIR):
+def create_app(ledger_path=None, scores_path=None, models_dir=MODELS_DIR, weather_scores_path=None):
     app = Flask(__name__)
 
     def ctx(active):
-        return {"pages": PAGES, "active": active, "cfg": config,
+        return {"pages": PAGES, "active": active, "cfg": config, "age_hours": data.age_hours,
                 "generated": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")}
 
     def conn():
@@ -31,9 +31,9 @@ def create_app(ledger_path=None, scores_path=None, models_dir=MODELS_DIR):
         c = conn()
         fs = data.forward_stats(c)
         scores = data.load_scores(scores_path)
-        last_run = c.execute("SELECT * FROM runs ORDER BY seq DESC LIMIT 1").fetchone()
         return render_template("index.html", **ctx("index.html"), fs=fs, scores=scores,
-                               criteria=data.success_criteria(fs), last_run=last_run,
+                               criteria=data.success_criteria(fs), runs_by_strategy=data.latest_runs(c),
+                               weather=data.load_weather_scores(weather_scores_path),
                                integrity=ledger.verify(c),
                                runs=c.execute("SELECT COUNT(*) FROM runs").fetchone()[0])
 
@@ -46,8 +46,10 @@ def create_app(ledger_path=None, scores_path=None, models_dir=MODELS_DIR):
     @app.route("/edges.html")
     def edges():
         scores = data.load_scores(scores_path)
+        weather = data.load_weather_scores(weather_scores_path)
         return render_template("edges.html", **ctx("edges.html"), scores=scores,
-                               rows=data.edges(scores))
+                               rows=data.edges(scores), weather=weather,
+                               weather_rows=data.edges(weather))
 
     @app.route("/portfolio.html")
     def portfolio():
