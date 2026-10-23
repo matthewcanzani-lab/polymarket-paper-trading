@@ -24,6 +24,8 @@
     --fwd: #3fb67f; --fwd-bg: #1d3328; --bt: #b5b4ad; --bt-bg: #2b2b29; color-scheme: dark;
 }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 body { margin: 0; background: var(--bg); color: var(--ink);
   font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
 header { border-bottom: 1px solid var(--line); background: var(--surface); }
@@ -73,10 +75,27 @@ td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; }
 .empty { color: var(--muted); font-style: italic; }
 .alert { border: 1px solid var(--bad); color: var(--bad); border-radius: 8px; padding: 8px 12px; }
 @media (max-width: 600px) {
+  /* Tables become stacked cards: one card per row, each value labelled. */
+  .tablewrap { overflow-x: visible; border: 0; background: transparent; }
+  .tablewrap table, .tablewrap tbody, .tablewrap tr, .tablewrap td { display: block; width: 100%; }
+  .tablewrap tr:first-child { display: none; }            /* the header row */
+  .tablewrap tr { background: var(--surface); border: 1px solid var(--line); border-radius: 8px;
+    padding: 8px 12px; margin-bottom: 8px; }
+  .tablewrap td { display: flex; justify-content: space-between; gap: 12px; border: 0;
+    padding: 3px 0; white-space: normal; text-align: right; font-size: 14px; }
+  .tablewrap td::before { content: attr(data-label); color: var(--ink-2); text-align: left; }
+  .tablewrap td.q { display: block; text-align: left; font-weight: 600; min-width: 0; padding-bottom: 6px; }
+  .tablewrap td.q::before { content: none; }
+  .badge { font-size: 12px; }
+  .chart .tick { font-size: 13px; }
   .crit { grid-template-columns: 24px 1fr; }
   .crit .val { grid-column: 2; }
   .bar { grid-column: 2; }
 }
+.freshness { padding-block: 10px 0; }
+.updated { margin: 0; color: var(--ink-2); font-size: 13px; }
+.stale { margin-top: 8px; background: var(--bad); color: #ffffff; border-radius: 8px;
+  padding: 10px 12px; font-weight: 600; }
 footer { color: var(--muted); font-size: 12px; padding-block: 24px; border-top: 1px solid var(--line); }
 img.bt { max-width: 520px; width: 100%; border-radius: 6px; border: 1px solid var(--line); }
 </style>
@@ -86,8 +105,43 @@ img.bt { max-width: 520px; width: 100%; border-radius: 6px; border: 1px solid va
   <div class="brand">Polymarket Paper Model<small>paper trading only — fake money, no real orders</small></div>
   <nav>{% for page, name in pages %}<a href="{{ page }}" class="{{ 'on' if page == active }}">{{ name }}</a>{% endfor %}</nav>
 </div></header>
+<div class="wrap freshness">
+  <p class="updated" id="last-updated" data-last-run="{{ last_run_iso or '' }}" data-stale-hours="{{ cfg.STALE_AFTER_HOURS|int }}">
+    Last updated: <strong>{{ last_run_et or 'never' }}</strong></p>
+  <div class="stale" id="stale-banner" role="alert"{% if not stale_at_build %} hidden{% endif %}>
+    Warning: the last automated run was more than {{ cfg.STALE_AFTER_HOURS|int }} hours ago, so these
+    numbers may be out of date. The automation may have stopped.</div>
+</div>
 <main><div class="wrap">{% block body %}{% endblock %}</div></main>
 <footer><div class="wrap">Generated {{ generated }}. FORWARD = predictions logged before the market
 resolved (the honest record). BACKTEST = historical simulation, shown separately and never mixed in.</div></footer>
+<script>
+// Label every table cell with its column name (used by the phone layout).
+document.querySelectorAll(".tablewrap table").forEach(function (t) {
+  var head = t.rows[0] && t.rows[0].cells, i, r;
+  if (!head) return;
+  for (r = 1; r < t.rows.length; r++)
+    for (i = 0; i < t.rows[r].cells.length && i < head.length; i++)
+      t.rows[r].cells[i].setAttribute("data-label", head[i].textContent.trim());
+});
+</script>
+<script>
+// The page is static, so re-check freshness in the visitor's browser: if the
+// automation stops, nothing rebuilds the page, but this still flags it.
+(function () {
+  var el = document.getElementById("last-updated");
+  var banner = document.getElementById("stale-banner");
+  var iso = el && el.getAttribute("data-last-run");
+  if (!iso) { if (banner) banner.hidden = false; return; }
+  var t = new Date(iso);
+  var limit = parseFloat(el.getAttribute("data-stale-hours")) * 3600 * 1000;
+  try {
+    var txt = t.toLocaleString("en-US", {timeZone: "America/New_York", month: "short",
+      day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short"});
+    el.querySelector("strong").textContent = txt;
+  } catch (e) {}
+  if (banner) banner.hidden = !(Date.now() - t.getTime() > limit);
+})();
+</script>
 </body>
 </html>

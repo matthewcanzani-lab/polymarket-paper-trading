@@ -13,6 +13,8 @@ concurrency:
 
 permissions:
   contents: write              # to commit data/predictions.db back to the repo
+  pages: write                 # to publish the dashboard to GitHub Pages
+  id-token: write              # required by actions/deploy-pages
 
 jobs:
   run:
@@ -56,10 +58,22 @@ jobs:
           done
           exit 1
 
-      - name: Save the dashboard (download from this run's page)
+      - name: Package the dashboard for GitHub Pages
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-pages-artifact@v5
         with:
-          name: dashboard
           path: site/
-          retention-days: 14
+
+  deploy:
+    # Publishes site/ to https://matthewcanzani-lab.github.io/polymarket-paper-trading/
+    needs: run
+    if: ${{ !cancelled() }}    # still publish the dashboard if one scorer step failed
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5

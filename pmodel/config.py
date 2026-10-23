@@ -88,3 +88,6 @@ MAX_OPEN_EXPOSURE_FRACTION = float(_env("MAX_OPEN_EXPOSURE_FRACTION", 0.5))
 # each one was or wasn't bet). Overwritten each run; feeds the dashboard.
 LATEST_WEATHER_SCORES_PATH = Path(_env("LATEST_WEATHER_SCORES_PATH",
                                        DATA_DIR / "latest_weather_scores.json"))
+
+# Dashboard: show a red warning if the newest scorer run is older than this.
+STALE_AFTER_HOURS = float(_env("STALE_AFTER_HOURS", 36))

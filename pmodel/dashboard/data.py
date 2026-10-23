@@ -39,6 +39,18 @@ def age_hours(iso, now=None):
     return ((now or datetime.now(timezone.utc)) - t).total_seconds() / 3600
 
 
+def eastern(iso):
+    """'Oct 23, 2026, 8:55 AM EDT' for an ISO-8601 UTC timestamp (US Eastern time)."""
+    if not iso:
+        return None
+    from datetime import datetime, timezone
+    from zoneinfo import ZoneInfo
+    t = datetime.strptime(iso, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    et = t.astimezone(ZoneInfo("America/New_York"))
+    hour = et.strftime("%I").lstrip("0")
+    return f"{et:%b} {et.day}, {et.year}, {hour}:{et:%M %p} {et.tzname()}"
+
+
 def latest_runs(conn):
     """Most recent run of each strategy, newest first."""
     seen, out = set(), []

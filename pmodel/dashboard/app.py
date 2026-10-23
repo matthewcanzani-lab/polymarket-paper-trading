@@ -19,8 +19,13 @@ def create_app(ledger_path=None, scores_path=None, models_dir=MODELS_DIR, weathe
     app = Flask(__name__)
 
     def ctx(active):
+        last = ledger.connect(ledger_path).execute(
+            "SELECT MAX(finished_at) FROM runs").fetchone()[0]
+        age = data.age_hours(last)
         return {"pages": PAGES, "active": active, "cfg": config, "age_hours": data.age_hours,
-                "generated": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")}
+                "generated": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+                "last_run_iso": last, "last_run_et": data.eastern(last),
+                "stale_at_build": age is None or age > config.STALE_AFTER_HOURS}
 
     def conn():
         return ledger.connect(ledger_path)

@@ -1,5 +1,9 @@
 # Polymarket Paper Trading (model v2)
 
+**Live dashboard: https://matthewcanzani-lab.github.io/polymarket-paper-trading/**
+(updated automatically twice a day; shows a red warning if the last run is more
+than 36 hours old)
+
 A **paper-trading-only** prediction model for Polymarket. It reads public market
 data, estimates the true probability of YES, and logs *fake* bets so we can
 build an honest, forward-tested track record.
@@ -170,6 +174,12 @@ python -m pmodel dashboard     # live Flask app at http://127.0.0.1:5000
 python -m pmodel build-site    # same pages as static HTML in site/ — open site/index.html anywhere
 ```
 
+The published copy lives at https://matthewcanzani-lab.github.io/polymarket-paper-trading/ —
+every Paper trading run rebuilds `site/` and deploys it to GitHub Pages
+(`.github/workflows/paper-trading.yml`, `deploy` job). All links are relative so
+the site works under the `/polymarket-paper-trading/` subpath; on phones,
+tables turn into one card per row.
+
 Pages: **Overview** (bankroll, success-criteria progress, latest run), **Live
 Markets**, **Edge Finder**, **Paper Portfolio** (P&L curve, open and settled
 bets), **Model Stats** (forward calibration, Brier, win rate, return on stake,
@@ -209,8 +219,7 @@ No computer of yours needs to stay on. Two workflows in `.github/workflows/`:
 * **Paper trading** — 05:17 and 17:17 UTC daily: verify the ledger, settle
   resolved bets, run the weather and general scorers, rebuild the dashboard,
   and commit `data/predictions.db` back to the repo (each commit is a dated,
-  outside record of every bet). The dashboard is attached to each run
-  (Actions tab -> the run -> Artifacts -> dashboard).
+  outside record of every bet), then publish the dashboard to GitHub Pages.
 * **Weather model refit** — Sundays: if 50+ weather markets resolved since
   the current version, re-learn station bias/spread and save a NEW version
   (`models/weather/weather-v*.json`); old versions are kept.
