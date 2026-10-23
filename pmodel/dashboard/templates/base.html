@@ -106,7 +106,7 @@ img.bt { max-width: 520px; width: 100%; border-radius: 6px; border: 1px solid va
 <body>
 <header><div class="wrap">
   <div class="brand">Polymarket Paper Model<small>paper trading only — fake money, no real orders</small></div>
-  <nav>{% for page, name in pages %}<a href="{{ page }}" class="{{ 'on' if page == active }}">{{ name }}</a>{% endfor %}</nav>
+  <nav>{% for page, name in pages %}<a href="{{ root }}{{ page }}" class="{{ 'on' if page == active }}">{{ name }}</a>{% endfor %}</nav>
 </div></header>
 <div class="wrap freshness">
   <p class="updated" id="last-updated" data-last-run="{{ last_run_iso or '' }}" data-stale-hours="{{ cfg.STALE_AFTER_HOURS|int }}">
@@ -119,6 +119,7 @@ img.bt { max-width: 520px; width: 100%; border-radius: 6px; border: 1px solid va
 <footer><div class="wrap">
 <p class="owner">Built and maintained by Matthew Canzani since June 2026 ·
 <a href="https://github.com/matthewcanzani-lab" rel="noopener">github.com/matthewcanzani-lab</a></p>
+{% block footer_extra %}{% endblock %}
 <p>Generated {{ generated }}. FORWARD = predictions logged before the market
 resolved (the honest record). BACKTEST = historical simulation, shown separately and never mixed in.</p>
 </div></footer>

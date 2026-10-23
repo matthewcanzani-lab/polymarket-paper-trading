@@ -205,3 +205,38 @@ def backtests(models_dir):
         out.append({"version": meta["version"], "path": path, "meta": meta,
                     "superseded": meta.get("superseded")})
     return out
+
+
+EARLY_SAMPLE = 50   # below this many settled markets, results are flagged as early
+MEANINGFUL_GAIN = 0.02  # model must beat the market's Brier score by 2%+ to claim it is better
+
+
+def results_summary(conn):
+    """Headline numbers for the Results page. FORWARD results only: every figure
+    comes from bets logged before their market resolved. Nothing is rounded up
+    and nothing is filtered: all settled bets count."""
+    logged = conn.execute("SELECT COUNT(*) FROM bets").fetchone()[0]
+    rows = conn.execute("""SELECT b.model_prob_yes, b.market_mid, b.stake, s.yes_payout, s.pnl
+                           FROM bets b JOIN settlements s USING (bet_id)""").fetchall()
+    settled = len(rows)
+    out = {"logged": logged, "settled": settled, "early": settled < EARLY_SAMPLE,
+           "early_threshold": EARLY_SAMPLE, "brier_model": None, "brier_market": None,
+           "paper_return": None, "staked": 0.0, "pnl": 0.0, "verdict": None}
+    if settled:
+        y = np.array([r["yes_payout"] for r in rows])
+        out["brier_model"] = float(np.mean((np.array([r["model_prob_yes"] for r in rows]) - y) ** 2))
+        out["brier_market"] = float(np.mean((np.array([r["market_mid"] for r in rows]) - y) ** 2))
+        out["staked"] = float(sum(r["stake"] for r in rows))
+        out["pnl"] = float(sum(r["pnl"] for r in rows))
+        out["paper_return"] = out["pnl"] / out["staked"] if out["staked"] else None
+        bm, bk = out["brier_model"], out["brier_market"]
+        if bm >= bk:
+            out["verdict"] = ("So far my model is not beating the market: the market's own prices "
+                              "have been at least as accurate as mine.")
+        elif bm > bk * (1 - MEANINGFUL_GAIN):
+            out["verdict"] = ("So far my model has been roughly as accurate as the market's own "
+                              "prices. The difference is too small to call an edge.")
+        else:
+            out["verdict"] = ("So far my model's probabilities have been more accurate than the "
+                              "market's own prices on the markets I bet on.")
+    return out

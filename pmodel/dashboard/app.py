@@ -11,18 +11,21 @@ from pmodel.dashboard import charts, data
 from pmodel.model.train import MODELS_DIR
 from pmodel.trading import ledger
 
+REPO_URL = "https://github.com/matthewcanzani-lab/polymarket-paper-trading"
 PAGES = [("index.html", "Overview"), ("markets.html", "Live Markets"), ("edges.html", "Edge Finder"),
-         ("portfolio.html", "Paper Portfolio"), ("stats.html", "Model Stats")]
+         ("portfolio.html", "Paper Portfolio"), ("stats.html", "Model Stats"),
+         ("results/", "Results")]
 
 
 def create_app(ledger_path=None, scores_path=None, models_dir=MODELS_DIR, weather_scores_path=None):
     app = Flask(__name__)
 
-    def ctx(active):
+    def ctx(active, root=""):
         last = ledger.connect(ledger_path).execute(
             "SELECT MAX(finished_at) FROM runs").fetchone()[0]
         age = data.age_hours(last)
-        return {"pages": PAGES, "active": active, "cfg": config, "age_hours": data.age_hours,
+        return {"pages": PAGES, "active": active, "root": root, "repo_url": REPO_URL,
+                "cfg": config, "age_hours": data.age_hours,
                 "generated": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
                 "last_run_iso": last, "last_run_et": data.eastern(last),
                 "stale_at_build": age is None or age > config.STALE_AFTER_HOURS}
@@ -81,6 +84,14 @@ def create_app(ledger_path=None, scores_path=None, models_dir=MODELS_DIR, weathe
                                criteria=data.success_criteria(fs), current=current,
                                versions=versions, bt_img=bt_img)
 
+    @app.route("/results/")
+    def results():
+        c = conn()
+        fs = data.forward_stats(c)
+        return render_template("results.html", **ctx("results/", root="../"),
+                               r=data.results_summary(c),
+                               cal_svg=charts.calibration_chart(fs["calibration"], compact=True))
+
     return app
 
 
@@ -92,5 +103,8 @@ def build_site(out_dir, **kw):
         for page, _ in PAGES:
             resp = client.get(f"/{page}")
             assert resp.status_code == 200, (page, resp.status_code)
-            (out_dir / page).write_bytes(resp.data)
+            # "results/" becomes results/index.html, so it is served at /results/
+            target = out_dir / page / "index.html" if page.endswith("/") else out_dir / page
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(resp.data)
     return out_dir

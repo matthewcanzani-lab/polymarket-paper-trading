@@ -46,10 +46,13 @@ def pnl_chart(points, start_bankroll):
     return _svg("".join(body), "Cumulative paper profit and loss")
 
 
-def calibration_chart(rows, forecast_key="forecast", actual_key="actual", n_key="n"):
-    """Forecast vs how often it happened, per 10-point band. Diagonal = perfect."""
+def calibration_chart(rows, forecast_key="forecast", actual_key="actual", n_key="n", compact=False):
+    """Forecast vs how often it happened, per 10-point band. Diagonal = perfect.
+    compact=True draws a square chart with the axis titles below/left (no wide margin)."""
     if not rows:
         return '<p class="empty">Not enough settled bets for a calibration chart yet.</p>'
+    if compact:
+        return _calibration_compact(rows, forecast_key, actual_key, n_key)
     side = min(W - PAD_L - PAD_R, H - PAD_T - PAD_B)
     sx = lambda v: PAD_L + v * side
     sy = lambda v: PAD_T + (1 - v) * side
@@ -71,3 +74,28 @@ def calibration_chart(rows, forecast_key="forecast", actual_key="actual", n_key=
                 f'forecast</text>')
     body.append(f'<text class="tick" x="{sx(1) + 8:.1f}" y="{sy(0.5):.1f}">how often it happened</text>')
     return _svg("".join(body), "Calibration: forecast versus outcome")
+
+
+def _calibration_compact(rows, fk, ak, nk):
+    size, pl, pr, pt = 300, 62, 22, 12
+    side = size - pl - pr
+    height = pt + side + 44
+    sx = lambda v: pl + v * side
+    sy = lambda v: pt + (1 - v) * side
+    body = [f'<rect class="frame" x="{pl}" y="{pt}" width="{side}" height="{side}"/>',
+            f'<line class="diag" x1="{sx(0)}" y1="{sy(0)}" x2="{sx(1)}" y2="{sy(1)}"/>']
+    for v in (0, 0.5, 1):
+        body.append(f'<text class="tick" x="{sx(v):.1f}" y="{pt + side + 16}" text-anchor="middle">{v:.0%}</text>')
+        body.append(f'<text class="tick" x="{pl - 6}" y="{sy(v) + 4:.1f}" text-anchor="end">{v:.0%}</text>')
+    pts = sorted(rows, key=lambda r: r[fk])
+    body.append('<polyline class="line" points="' + " ".join(
+        f"{sx(r[fk]):.1f},{sy(r[ak]):.1f}" for r in pts) + '"/>')
+    for r in pts:
+        body.append(f'<circle class="dot" cx="{sx(r[fk]):.1f}" cy="{sy(r[ak]):.1f}" r="5"><title>Said '
+                    f'{r[fk]:.0%}, happened {r[ak]:.0%} ({r[nk]:,.0f} bets)</title></circle>')
+    body.append(f'<text class="tick" x="{sx(0.5):.1f}" y="{pt + side + 36}" text-anchor="middle">'
+                f'what the model said</text>')
+    body.append(f'<text class="tick" transform="translate(13 {sy(0.5):.1f}) rotate(-90)" '
+                f'text-anchor="middle">what happened</text>')
+    return (f'<svg viewBox="0 0 {size} {height}" role="img" class="chart" '
+            f'aria-label="Calibration: forecast versus outcome">{"".join(body)}</svg>')

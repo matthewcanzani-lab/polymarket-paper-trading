@@ -55,7 +55,9 @@ def test_all_pages_render_and_export(tmp_path):
     assert "FORWARD" in stats and "BACKTEST" in stats
     assert "Will it rain?" in client.get("/edges.html").get_data(as_text=True)
     out = build_site(tmp_path / "site", **kw)
-    assert sorted(p.name for p in out.iterdir()) == sorted(p for p, _ in PAGES)
+    built = sorted(str(p.relative_to(out)) for p in out.rglob("*.html"))
+    expected = sorted(p + "index.html" if p.endswith("/") else p for p, _ in PAGES)
+    assert built == expected
 
 
 def test_dashboard_works_with_empty_ledger(tmp_path):
@@ -91,7 +93,7 @@ def test_site_uses_only_relative_paths(tmp_path):
     import re
     _seed(tmp_path / "p.db")
     out = build_site(tmp_path / "site", ledger_path=tmp_path / "p.db")
-    for page in out.iterdir():
+    for page in out.rglob("*.html"):
         html = page.read_text()
         assert not re.search(r'''(?:href|src)=["']/(?!/)''', html), page.name
         assert "url(/" not in html, page.name
@@ -106,5 +108,60 @@ def test_ownership_footer_on_every_page(tmp_path):
         html = client.get(f"/{page}").get_data(as_text=True)
         assert footer in html and link in html, page
     out = build_site(tmp_path / "site", ledger_path=tmp_path / "p.db")
-    for f in out.iterdir():                                  # static export
+    for f in out.rglob("*.html"):                            # static export
         assert footer in f.read_text() and link in f.read_text(), f.name
+
+
+
+def test_results_page(tmp_path):
+    """Seeded ledger: 2 settled bets (one won, one lost), model worse than market."""
+    _seed(tmp_path / "p.db")
+    client = create_app(ledger_path=tmp_path / "p.db").test_client()
+    html = client.get("/results/").get_data(as_text=True)
+    assert "Polymarket Prediction Model — Forward-Tested Results" in html
+    assert "Early results: sample still small" in html                 # 2 < 50 settled
+    # bet1: model .6 / market .5, YES won; bet2: model .3 / market .5, YES won
+    # model Brier (0.16+0.49)/2 = 0.325 > market 0.25 -> must say it isn't beating the market
+    assert "0.325" in html and "0.250" in html
+    assert "my model is not beating the market" in html
+    assert "-3.8%" in html                                             # -4 / 104 staked
+    assert 'href="../index.html"' in html and 'href="../stats.html"' in html   # nav from /results/
+    assert "Last updated:" in html and "since June 2026" in html
+    assert "/commits/main/data/predictions.db" in html
+
+
+def test_results_page_with_no_settled_bets(tmp_path):
+    html = create_app(ledger_path=tmp_path / "empty.db").test_client().get(
+        "/results/").get_data(as_text=True)
+    assert "No predictions have been settled yet" in html
+    assert "Early results: sample still small" in html
+
+
+def test_results_says_when_model_beats_market(tmp_path):
+    from pmodel.dashboard import data
+    from tests.test_trading import _bet
+    conn = ledger.connect(tmp_path / "p.db")
+    for i in range(60):
+        ledger.append_bet(conn, _bet(bet_id=f"b{i}", market_id=str(i), model_prob_yes=0.9,
+                                     market_mid=0.6))
+        ledger.append_settlement(conn, {"bet_id": f"b{i}", "settled_at": "2026-10-25T00:00:00Z",
+                                        "yes_payout": 1.0, "payout": 100.0, "pnl": 48.0})
+    r = data.results_summary(conn)
+    assert not r["early"] and r["brier_model"] < r["brier_market"]
+    assert r["verdict"].startswith("So far my model's probabilities have been more accurate")
+
+
+
+def test_results_verdict_does_not_round_up(tmp_path):
+    """A tiny Brier advantage is reported as 'roughly as accurate', not as beating the market."""
+    from pmodel.dashboard import data
+    from tests.test_trading import _bet
+    conn = ledger.connect(tmp_path / "p.db")
+    for i in range(60):
+        ledger.append_bet(conn, _bet(bet_id=f"b{i}", market_id=str(i), model_prob_yes=0.795,
+                                     market_mid=0.79))
+        ledger.append_settlement(conn, {"bet_id": f"b{i}", "settled_at": "2026-10-25T00:00:00Z",
+                                        "yes_payout": 1.0 if i % 5 else 0.0, "payout": 0.0, "pnl": 0.0})
+    r = data.results_summary(conn)
+    assert r["brier_model"] < r["brier_market"]                 # slightly better...
+    assert "roughly as accurate" in r["verdict"]                 # ...but not claimed as an edge

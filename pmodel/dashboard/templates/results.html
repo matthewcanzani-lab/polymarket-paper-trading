@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% block title %}Forward-Tested Results · Polymarket Paper Model{% endblock %}
+{% block body %}
+<style>
+.res h1 { font-size: 26px; line-height: 1.25; text-wrap: balance; margin-bottom: 8px; }
+.res .what { font-size: 17px; color: var(--ink-2); max-width: 62ch; margin: 0 0 16px; }
+.res .early { display: inline-block; background: var(--bt-bg); color: var(--ink); border: 1px solid var(--line);
+  border-radius: 6px; padding: 6px 10px; font-weight: 600; margin: 0 0 12px; }
+.res .verdict { font-size: 16px; font-weight: 600; margin: 0 0 16px; max-width: 62ch; }
+.res .nums { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; margin-bottom: 8px; }
+.res .num { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+.res .num .label { font-size: 14px; color: var(--ink-2); line-height: 1.35; }
+.res .num .value { font-size: 30px; font-weight: 700; margin: 4px 0 2px; font-variant-numeric: tabular-nums; }
+.res .num .value small { font-size: 16px; font-weight: 600; color: var(--ink-2); }
+.res .num .help { font-size: 13px; color: var(--muted); line-height: 1.4; }
+.res h2 { font-size: 19px; margin-top: 28px; }
+.res .cap { color: var(--ink-2); max-width: 62ch; margin: 4px 0 0; }
+.res .chartbox { max-width: 340px; }
+.res ul { padding-left: 20px; max-width: 66ch; margin: 0; }
+.res li { margin-bottom: 10px; line-height: 1.5; }
+.res p.body { max-width: 66ch; line-height: 1.55; }
+.res a { color: var(--accent); }
+@media print {
+  @page { size: letter; margin: 10mm 12mm; }
+  .res .what, .res .verdict, .res p.body, .res .cap, .res ul { max-width: none; }
+  .res .calrow { display: flex; gap: 14px; align-items: center; }
+  .res .calrow .cap { flex: 1; }
+  .res .calrow .chartbox { flex: 0 0 165px; max-width: 165px; }
+  footer p:not(.owner):not(.updated-foot) { display: none; }
+  .freshness .updated { font-size: 8.5pt; }
+  :root { --bg: #fff; --surface: #fff; --ink: #000; --ink-2: #333; --muted: #555; --line: #bbb;
+          --accent: #1a5fb4; --bt-bg: #eee; color-scheme: light; }
+  body { font-size: 10.5pt; }
+  header nav, .freshness .stale, script { display: none !important; }
+  header .brand { padding: 0; }
+  .freshness { padding: 0; }
+  main { padding-block: 6px 0; }
+  .res h1 { font-size: 17pt; margin: 0 0 4px; }
+  .res .what, .res .verdict, .res .early { font-size: 10.5pt; margin-bottom: 6px; }
+  .res .nums { grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  .res .num { padding: 6px 8px; break-inside: avoid; }
+  .res .num .label, .res .num .help { font-size: 8pt; line-height: 1.3; }
+  .res .num .value { font-size: 15pt; }
+  .res h2 { font-size: 12pt; margin: 8px 0 3px; }
+  .res li { margin-bottom: 2px; line-height: 1.3; }
+  .res p.body, .res .cap { margin: 2px 0; line-height: 1.3; }
+  footer { padding-block: 6px; font-size: 8.5pt; }
+  footer .owner { font-size: 9pt; }
+  a { color: #000; }
+}
+</style>
+<div class="res">
+<h1>Polymarket Prediction Model — Forward-Tested Results</h1>
+<p class="what">My model estimates the chances of real-world events listed on Polymarket (a prediction
+market) and places <strong>pretend bets</strong> where it disagrees with the market's price. It is
+paper trading only: no real money is ever used.</p>
+
+{% if r.early %}<p class="early">Early results: sample still small ({{ r.settled }} of the first
+{{ r.early_threshold }} markets settled).</p>{% endif %}
+{% if r.verdict %}<p class="verdict">{{ r.verdict }}</p>
+{% else %}<p class="verdict">No predictions have been settled yet, so there is no result to report yet.</p>{% endif %}
+
+<div class="nums">
+  <div class="num"><div class="label">Predictions logged before the outcome was known</div>
+    <div class="value">{{ '{:,}'.format(r.logged) }}</div>
+    <div class="help">Each saved with a timestamp before its market ended.</div></div>
+  <div class="num"><div class="label">Markets settled so far</div>
+    <div class="value">{{ '{:,}'.format(r.settled) }}</div>
+    <div class="help">The outcome is known and the pretend bet has been paid out.</div></div>
+  <div class="num"><div class="label">Brier score: mine vs. the market's own price</div>
+    <div class="value">{% if r.brier_model is not none %}{{ '{:.3f}'.format(r.brier_model) }}
+      <small>vs {{ '{:.3f}'.format(r.brier_market) }}</small>{% else %}—{% endif %}</div>
+    <div class="help">Lower is better. It measures how far the predicted chances were from what
+      happened, on the markets I bet on: 0 is perfect, 0.25 is a coin flip.</div></div>
+  <div class="num"><div class="label">Paper return after slippage</div>
+    <div class="value">{% if r.paper_return is not none %}{{ '{:+.1%}'.format(r.paper_return) }}{% else %}—{% endif %}</div>
+    <div class="help">Pretend profit divided by pretend money staked, after realistic trading
+      costs ("slippage": paying slightly worse prices than quoted).
+      {% if r.staked %}${{ '{:,.2f}'.format(r.pnl) }} on ${{ '{:,.2f}'.format(r.staked) }} staked.{% endif %}</div></div>
+</div>
+
+<h2>Is the model's confidence trustworthy?</h2>
+<div class="calrow">
+<div class="chartbox">{{ cal_svg|safe }}</div>
+<p class="cap">When the model says something has a 70% chance, it should happen about 70% of the
+time. Dots close to the dashed line mean its confidence matches reality.</p>
+</div>
+
+<h2>What I learned</h2>
+<ul>
+  <li>My first version (June 2026) looked impressive in testing, with an 84% win rate and a +21%
+    simulated return. But it used information that was not yet known when each prediction was made,
+    such as a market's final trading volume, and it mixed up time periods. This mistake is called
+    <em>look-ahead bias</em>, and it makes a model look far better than it is.</li>
+  <li>In this version the model may only use what was knowable at the moment of each prediction, it is
+    tested on later months than it learned from, and every bet is logged before the outcome. When I
+    removed the same leak here, an apparent +24% edge disappeared.</li>
+  <li>Polymarket's prices turned out to be accurate already, so beating them needs outside
+    information. I'm now testing whether weather forecasts beat temperature markets, with every pretend
+    trade priced at what it would really have cost.</li>
+</ul>
+
+<h2>How to verify</h2>
+<p class="body">Every prediction is saved to a file in this public GitHub repository when it is made,
+and GitHub timestamps each save, so results can't be added after the fact. Each record is also linked
+to the one before it, so changing an old record would be detectable.
+<a href="{{ repo_url }}/commits/main/data/predictions.db" rel="noopener">See the full, timestamped history of predictions</a>.</p>
+</div>
+{% endblock %}
+{% block footer_extra %}<p class="updated-foot">Last updated: {{ last_run_et or 'never' }} (Eastern time).</p>{% endblock %}
