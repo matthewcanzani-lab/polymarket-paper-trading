@@ -1,0 +1,41 @@
+# Weekly: re-learn each weather station's forecast bias/spread from newly
+# resolved markets. Saves a NEW model version; older versions are kept.
+name: Weather model refit
+
+on:
+  schedule:
+    - cron: "41 3 * * 0"     # Sundays 03:41 UTC
+  workflow_dispatch:
+
+concurrency:
+  group: paper-trading       # don't overlap with a scoring run
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  refit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Refit (only if 50+ new resolved weather markets)
+        run: python -m pmodel weather-refit --db /tmp/weather_refit.db --min-new 50
+      - name: Commit any new model version
+        run: |
+          git config user.name "paper-trading-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add models/weather/
+          if git diff --cached --quiet; then echo "No new version."; exit 0; fi
+          git commit -m "Weather model refit $(date -u +%Y-%m-%d) [automated]"
+          for i in 1 2 3; do
+            git pull --rebase origin "${GITHUB_REF_NAME}" && git push origin "HEAD:${GITHUB_REF_NAME}" && exit 0
+            sleep 15
+          done
+          exit 1

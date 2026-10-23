@@ -88,3 +88,26 @@ def to_error_model(params) -> ErrorModel:
         st, kind, lead = key.split("|")
         m.by_key[(st, kind, int(lead))] = tuple(v)
     return m
+
+
+def refit_errors(conn, base: dict, log=print) -> dict:
+    """Light refit for automation: re-learn per-station bias/spread from resolved
+    outcomes + archived forecasts (no price history needed). Keeps the spread
+    scale, tail shape and blend weights of `base` (those need the full fit)."""
+    mk, fc = bt.load(conn)
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    errors = bt.forecast_errors(mk, fc, today)
+    model = ErrorModel.fit(errors, base["scale"], base["df"])
+    tz = dict(conn.execute("SELECT station, MAX(tz) FROM weather_forecasts GROUP BY station"))
+    stations = dict(base["stations"])
+    for st, lat, lon, name in conn.execute("SELECT station, lat, lon, name FROM weather_stations"):
+        stations[st] = {"lat": lat, "lon": lon, "name": name, "tz": tz.get(st) or stations.get(st, {}).get("tz")}
+    log(f"refit on {len(errors):,} forecast errors from {errors.day.min()} to {errors.day.max()}")
+    return {**base,
+            "version": "weather-v" + datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S"),
+            "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "fitted_on_days_before": today, "refit_of": base["version"], "refit": "errors only",
+            "resolved_markets_used": int(mk.yes_payout.notna().sum()),
+            "global": {f"{k}|{l}": list(v) for (k, l), v in model.global_.items()},
+            "by_key": {f"{s}|{k}|{l}": list(v) for (s, k, l), v in model.by_key.items()},
+            "stations": stations}

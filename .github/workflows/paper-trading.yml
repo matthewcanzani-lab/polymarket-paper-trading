@@ -1,0 +1,63 @@
+# Runs the PAPER-trading loop twice a day on GitHub's computers.
+# Fake money only: nothing here can place an order (see pmodel/safe_http.py).
+name: Paper trading
+
+on:
+  schedule:
+    - cron: "17 5,17 * * *"   # 05:17 and 17:17 UTC
+  workflow_dispatch:           # "Run workflow" button for a manual run
+
+concurrency:
+  group: paper-trading         # never two runs writing the ledger at once
+  cancel-in-progress: false
+
+permissions:
+  contents: write              # to commit data/predictions.db back to the repo
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt
+
+      - name: Check the ledger hasn't been tampered with
+        run: python -m pmodel ledger
+      - name: Settle bets on resolved markets
+        run: python -m pmodel settle
+      - name: Score weather markets
+        run: python -m pmodel weather-score
+      - name: Score general markets
+        if: ${{ !cancelled() }}      # still run if the weather step hit a temporary error
+        run: python -m pmodel score
+      - name: Build the dashboard
+        if: ${{ !cancelled() }}
+        run: python -m pmodel build-site
+
+      - name: Commit the ledger (only if its integrity check passes)
+        if: ${{ !cancelled() }}
+        run: |
+          python -m pmodel ledger
+          git config user.name "paper-trading-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/predictions.db
+          if git diff --cached --quiet; then echo "No ledger changes."; exit 0; fi
+          git commit -m "Paper trading run $(date -u +%Y-%m-%dT%H:%MZ) [automated]"
+          for i in 1 2 3; do
+            git pull --rebase origin "${GITHUB_REF_NAME}" && git push origin "HEAD:${GITHUB_REF_NAME}" && exit 0
+            sleep 15
+          done
+          exit 1
+
+      - name: Save the dashboard (download from this run's page)
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: dashboard
+          path: site/
+          retention-days: 14

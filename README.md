@@ -18,7 +18,8 @@ build an honest, forward-tested track record.
 | 2 | Model: XGBoost, no look-ahead, time-based split, calibration + Brier | **done — no edge found yet** |
 | 3 | Paper trading log: edges > 5 pts, quarter Kelly, slippage, auto-settle, append-only | **done — live ledger started 2026-10-22** |
 | 4 | Flask dashboard (+ static export) | **done** |
-| 5 | Automation: scheduled scoring, retrain every ~50 resolutions | not started |
+| 5 | Automation: scheduled scoring, retrain every ~50 resolutions | **done (GitHub Actions)** |
+| + | Weather strategy: forecasts + market blend, forward paper test | **live** |
 
 ## Set up on a new computer (from zero)
 
@@ -170,6 +171,48 @@ by-category P&L). FORWARD results (green, solid border) and BACKTEST results
 
 The static export needs no server, so it works on a locked-down computer and
 can be published (e.g. GitHub Pages) for others to see.
+
+## Weather strategy
+
+Daily high/low temperature markets (49 cities). Probability = a blend of the
+market midpoint and a forecast-based probability (as-issued Open-Meteo forecast,
+corrected by each station's learned bias and spread). See
+`models/weather/FINDINGS.md` for the backtest: forecasts beat recorded prices on
+Brier score, but the backtest can't prove the edge was tradeable, so it is
+being tested FORWARD with every fake fill priced from the live order book.
+
+Rules: bet only 1-2 days ahead (never on the day), > 5-point disagreement with
+the live midpoint, walk the real order book + 1c, quarter Kelly, max 5% of the
+bankroll per bet and per city-day, max 50% of the bankroll at risk overall.
+
+```bash
+python -m pmodel weather-score     # score open temperature markets, log PAPER bets
+python -m pmodel weather-fit       # full refit (needs the market DB; run in a cloud session)
+python -m pmodel weather-refit     # light refit of station bias/spread from fresh API data
+```
+
+Polymarket changed the resolution rule on 23 Oct 2026 (hourly routine METAR
+reports instead of NOAA "all times"); measured effect on 1,794 recent
+station-days: ~0.0C (`models/weather/rule_change_shift_2026-10.json`).
+
+## Phase 5: automation (GitHub Actions)
+
+No computer of yours needs to stay on. Two workflows in `.github/workflows/`:
+
+* **Paper trading** — 05:17 and 17:17 UTC daily: verify the ledger, settle
+  resolved bets, run the weather and general scorers, rebuild the dashboard,
+  and commit `data/predictions.db` back to the repo (each commit is a dated,
+  outside record of every bet). The dashboard is attached to each run
+  (Actions tab -> the run -> Artifacts -> dashboard).
+* **Weather model refit** — Sundays: if 50+ weather markets resolved since
+  the current version, re-learn station bias/spread and save a NEW version
+  (`models/weather/weather-v*.json`); old versions are kept.
+
+The general model needs the multi-GB market database to retrain, so that is
+done by hand in a cloud session (`ingest-*`, then `train`); every version is
+kept in `models/`.
+
+Run either workflow by hand: GitHub -> Actions -> pick it -> "Run workflow".
 
 ## Where the data lives — and why there are two databases
 

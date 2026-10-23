@@ -94,6 +94,8 @@ def cmd_ledger(args):
     for r in conn.execute("SELECT * FROM bets ORDER BY seq DESC LIMIT 10"):
         print(f"  {r['placed_at']} {r['side']:3} ${r['stake']:7.2f} @ {r['fill_price']:.3f} "
               f"model {r['model_prob_yes']:.0%} mkt {r['market_mid']:.0%}  {r['question'][:50]}")
+    if problems:
+        raise SystemExit(1)  # make automation stop instead of committing a damaged ledger
 
 
 def cmd_dashboard(args):
@@ -132,6 +134,25 @@ def cmd_weather_backtest(args):
 def cmd_weather_fit(args):
     from pmodel.weather import artifact
     print("Saved", artifact.save(artifact.fit(db.connect())))
+
+
+def cmd_weather_refit(args):
+    """Weekly automation: rebuild a small weather DB from the APIs and refit errors."""
+    from datetime import datetime, timedelta, timezone
+    from pathlib import Path
+    from pmodel.weather import artifact, collect
+    conn = db.connect(Path(args.db))
+    end = datetime.now(timezone.utc).date()
+    start = end - timedelta(days=args.days)
+    collect.collect_markets(conn, start.isoformat(), end.isoformat())
+    collect.collect_forecasts(conn, start.isoformat(), end.isoformat())
+    base, _ = artifact.load_latest()
+    new_resolved = conn.execute("SELECT COUNT(*) FROM weather_markets WHERE yes_payout IS NOT NULL "
+                                "AND day >= ?", (base["fitted_on_days_before"],)).fetchone()[0]
+    if new_resolved < args.min_new:
+        print(f"Only {new_resolved} newly resolved weather markets (< {args.min_new}); keeping {base['version']}.")
+        return
+    print("Saved", artifact.save(artifact.refit_errors(conn, base)))
 
 
 def cmd_weather_score(args):
@@ -203,6 +224,11 @@ def main():
     s.set_defaults(func=cmd_weather_collect)
     sub.add_parser("weather-fit", help="fit + save a new weather model version (needs market DB)").set_defaults(
         func=cmd_weather_fit)
+    s = sub.add_parser("weather-refit", help="automation: refit weather errors from fresh API data")
+    s.add_argument("--db", default="data/weather_refit.db")
+    s.add_argument("--days", type=int, default=240)
+    s.add_argument("--min-new", type=int, default=50, help="retrain only after this many new resolutions")
+    s.set_defaults(func=cmd_weather_refit)
     s = sub.add_parser("weather-score", help="score open temperature markets and log PAPER bets")
     s.add_argument("--ledger", help="ledger file (default data/predictions.db)")
     s.set_defaults(func=cmd_weather_score)
