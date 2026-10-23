@@ -8,7 +8,7 @@ reuse is not. See [LICENSE](LICENSE).
 than 36 hours old)
 
 A **paper-trading-only** prediction model for Polymarket. It reads public market
-data, estimates the true probability of YES, and logs *fake* bets so we can
+data, estimates the true probability of YES, and logs *fake* bets so I can
 build an honest, forward-tested track record.
 
 > **Safety rule:** this project never places real orders, never connects a
@@ -83,7 +83,7 @@ These steps are for a Mac. On Linux they're the same minus Homebrew.
 7. **Re-download market data** (it is *not* in git; it's big and can always be
    re-pulled): see "Phase 1 commands" below.
 
-## Which markets we use (the "universe")
+## Which markets I use (the "universe")
 
 Defined once in `pmodel/universe.py`, settings in `pmodel/config.py`:
 
@@ -114,7 +114,7 @@ markets only return hourly data in windows of <= 14 days, so markets that lived
 <= 60 days get hourly history and longer ones get one point per 12 hours.
 
 Running `ingest-markets active` again later adds a new *snapshot* of every active
-market, so over time we build our own record of what prices and volumes looked
+market, so over time I build my own record of what prices and volumes looked
 like at each moment.
 
 ## Phase 2: the model

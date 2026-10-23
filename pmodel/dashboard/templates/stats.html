@@ -10,7 +10,7 @@
   <div class="tile"><div class="k">Return on stake</div><div class="v">{{ '{:+.1%}'.format(fs.return_on_stake) if fs.return_on_stake is not none else '—' }}</div></div>
 </div>
 <h2>Calibration of paper bets</h2>
-<p class="note">For each bet: the probability the model gave the side we bought vs. how often that side won.</p>
+<p class="note">For each bet: the probability the model gave the side I bought vs. how often that side won.</p>
 {{ fwd_cal_svg|safe }}
 {% if fs.by_strategy %}<h2>By strategy</h2><div class="tablewrap"><table>
 <tr><th>Strategy</th><th class="n">Settled bets</th><th class="n">Staked</th><th class="n">P&amp;L</th><th class="n">Return</th></tr>
