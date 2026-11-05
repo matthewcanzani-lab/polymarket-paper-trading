@@ -20,6 +20,7 @@ ALLOWED_HOSTS = {
     "data-api.polymarket.com",   # public trade history (read-only)
     "previous-runs-api.open-meteo.com",  # archived weather forecasts (as issued)
     "aviationweather.gov",       # weather-station coordinates and airport reports (METAR)
+    "api.the-odds-api.com",      # sportsbook odds (read-only; key from the ODDS_API_KEY secret)
 }
 
 _local = threading.local()  # one Session per thread (Sessions aren't guaranteed thread-safe)
@@ -36,8 +37,9 @@ class HostNotAllowed(Exception):
     pass
 
 
-def get_json(url, params=None, retries=4, timeout=30):
-    """GET a URL and return parsed JSON, retrying politely on rate limits/errors."""
+def get_json(url, params=None, retries=4, timeout=30, with_headers=False):
+    """GET a URL and return parsed JSON (and the response headers if asked),
+    retrying politely on rate limits/errors."""
     host = urlparse(url).hostname
     if host not in ALLOWED_HOSTS:
         raise HostNotAllowed(f"{host} is not on the read-only allowlist")
@@ -58,7 +60,7 @@ def get_json(url, params=None, retries=4, timeout=30):
                 problem = f"HTTP {resp.status_code}"
             else:
                 resp.raise_for_status()
-                return resp.json()
+                return (resp.json(), resp.headers) if with_headers else resp.json()
         print(f"  [retry] {host}: {problem}, waiting {delay:.0f}s", file=sys.stderr, flush=True)
         time.sleep(delay)
         delay *= 2

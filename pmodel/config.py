@@ -91,3 +91,12 @@ LATEST_WEATHER_SCORES_PATH = Path(_env("LATEST_WEATHER_SCORES_PATH",
 
 # Dashboard: show a red warning if the newest scorer run is older than this.
 STALE_AFTER_HOURS = float(_env("STALE_AFTER_HOURS", 36))
+
+# Sportsbook odds (the-odds-api.com). The key is a SECRET: it lives only in the
+# ODDS_API_KEY environment variable (a GitHub Actions secret), never in git.
+# Free plan = 500 credits/month; one league's moneyline odds cost 1 credit, so
+# at most ODDS_MAX_SPORTS_PER_RUN leagues are fetched per run (2 runs/day), and
+# fetching stops once fewer than ODDS_MIN_CREDITS_LEFT credits remain.
+ODDS_API_KEY = os.environ.get("ODDS_API_KEY", "")
+ODDS_MAX_SPORTS_PER_RUN = int(_env("ODDS_MAX_SPORTS_PER_RUN", 7))
+ODDS_MIN_CREDITS_LEFT = int(_env("ODDS_MIN_CREDITS_LEFT", 25))

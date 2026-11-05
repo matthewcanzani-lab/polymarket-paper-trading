@@ -190,6 +190,32 @@ re-stores a binary file in full on every commit. The dashboard (Overview, Model
 Stats) and the Results page show Brier score per model version: model vs the
 market's own price (and, for weather, the forecast alone).
 
+## Sports strategy: bookmaker odds (predictions only, since 2026-11-05)
+
+Question being tested: are sportsbooks' odds a better guide to game outcomes than
+Polymarket's price? For every Polymarket game-winner market (NFL, college
+football, NBA, college basketball, NHL, UFC, major soccer leagues) with $10k+
+volume that hasn't started yet, the strategy takes Pinnacle's odds (or the
+median bookmaker's), removes the bookmaker margin ("de-vigging") to get a fair
+probability, and logs it to the prediction log next to Polymarket's midpoint.
+Games are matched on league, both team names and start time; anything
+ambiguous is skipped. **No paper bets are placed**: betting rules come only
+after the logged record shows whether the odds actually beat the market (that
+would be a new, labeled version). Code: `pmodel/sources/odds_api.py` (data),
+`pmodel/sports/scorer.py` (matching and logging).
+
+```bash
+python -m pmodel sports-score      # needs ODDS_API_KEY; logs predictions, never bets
+```
+
+**API key (one-time setup):** sign up for the free plan at
+https://the-odds-api.com (500 credits/month), then in GitHub open the repo ->
+Settings -> Secrets and variables -> Actions -> New repository secret, name
+`ODDS_API_KEY`, paste the key. It is never written to git or printed: GitHub
+masks it in logs and the code strips it from error messages. Budget: one
+league costs 1 credit; at most 7 leagues per run x 2 runs a day is about 430
+a month, and fetching stops when fewer than 25 credits remain.
+
 ## Phase 4: dashboard
 
 ```bash

@@ -36,6 +36,11 @@ jobs:
         run: python -m pmodel settle
       - name: Score weather markets
         run: python -m pmodel weather-score
+      - name: Log sportsbook-odds predictions (no bets)
+        if: ${{ !cancelled() }}
+        env:
+          ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}   # repo secret; never printed
+        run: python -m pmodel sports-score
       - name: Score general markets
         if: ${{ !cancelled() }}      # still run if the weather step hit a temporary error
         run: python -m pmodel score

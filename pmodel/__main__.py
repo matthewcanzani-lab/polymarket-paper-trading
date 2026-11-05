@@ -219,6 +219,12 @@ def cmd_weather_score(args):
                predlog_dir=None if args.ledger else predlog.DIR)
 
 
+def cmd_sports_score(args):
+    from pmodel.sports import scorer
+    from pmodel.trading import predlog
+    scorer.run(_ledger(args), predlog_dir=None if args.ledger else predlog.DIR)
+
+
 def cmd_status(args):
     conn = db.connect()
     q = lambda sql: conn.execute(sql).fetchone()[0]
@@ -298,6 +304,9 @@ def main():
     s.add_argument("--ledger", help="ledger file (default data/predictions.db)")
     s.add_argument("--snapshot", help="where to save the scored-markets snapshot for the dashboard")
     s.set_defaults(func=cmd_weather_score)
+    s = sub.add_parser("sports-score", help="log sportsbook-odds predictions for game markets (no bets)")
+    s.add_argument("--ledger", help="ledger file (default data/predictions.db)")
+    s.set_defaults(func=cmd_sports_score)
     sub.add_parser("weather-backtest", help="one-shot backtest of the weather model").set_defaults(
         func=cmd_weather_backtest)
 

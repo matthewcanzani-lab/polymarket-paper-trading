@@ -83,8 +83,12 @@ def edges(scores, limit=100):
 
 
 def strategy_of(model_version: str) -> str:
-    return "Weather (forecast blend)" if (model_version or "").startswith("weather") else \
-        "General (price/volume model)"
+    v = model_version or ""
+    if v.startswith("weather"):
+        return "Weather (forecast blend)"
+    if v.startswith("sports"):
+        return "Sports (bookmaker odds, predictions only)"
+    return "General (price/volume model)"
 
 
 def open_by_strategy(conn):
@@ -306,7 +310,8 @@ def prediction_record(predlog_dir):
     from pmodel.trading import predlog
     groups = predlog.record(predlog_dir)
     for g in groups:
-        g["label"] = ("Weather" if g["strategy"] == "weather" else "General") + " · " + g["version"]
+        g["label"] = {"weather": "Weather", "sports": "Sports odds"}.get(g["strategy"], "General") \
+            + " · " + g["version"]
     total = {"logged": sum(g["logged"] for g in groups),
              "resolved": sum(g["resolved"] for g in groups),
              "since": min((g["first"] for g in groups), default=None)}
