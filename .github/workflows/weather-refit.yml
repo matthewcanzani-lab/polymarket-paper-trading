@@ -1,10 +1,11 @@
-# Weekly: re-learn each weather station's forecast bias/spread from newly
-# resolved markets. Saves a NEW model version; older versions are kept.
+# MANUAL ONLY (automatic weekly refits paused 2026-11-05: every refit since
+# Oct 23 did worse forward than the Oct 23 original). Re-learns each weather
+# station's forecast bias/spread and saves a NEW model version; older versions
+# are kept. The command itself refuses to run until the current version has
+# 150+ settled paper bets.
 name: Weather model refit
 
 on:
-  schedule:
-    - cron: "41 3 * * 0"     # Sundays 03:41 UTC
   workflow_dispatch:
 
 concurrency:
@@ -25,7 +26,7 @@ jobs:
           python-version: "3.11"
           cache: pip
       - run: pip install -r requirements.txt
-      - name: Refit (only if 50+ new resolved weather markets)
+      - name: Refit (only if the current version has 150+ settled bets and 50+ new resolutions)
         run: python -m pmodel weather-refit --db /tmp/weather_refit.db --min-new 50
       - name: Commit any new model version
         run: |

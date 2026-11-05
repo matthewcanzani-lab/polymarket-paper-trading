@@ -114,6 +114,11 @@ img.bt { max-width: 520px; width: 100%; border-radius: 6px; border: 1px solid va
   <div class="stale" id="stale-banner" role="alert"{% if not stale_at_build %} hidden{% endif %}>
     Warning: the last automated run was more than {{ cfg.STALE_AFTER_HOURS|int }} hours ago, so these
     numbers may be out of date. The automation may have stopped.</div>
+  {% if stop_loss and stop_loss.halted %}<div class="stale halt" role="alert">
+    Stop-loss triggered: weather model {{ stop_loss.version }} has lost
+    ${{ '{:,.2f}'.format(-stop_loss.pnl) }} ({{ '{:.0%}'.format(stop_loss.fraction) }} limit of its
+    ${{ '{:,.2f}'.format(stop_loss.starting_bankroll) }} starting bankroll). It is placing no new paper
+    bets until I review it.</div>{% endif %}
 </div>
 <main><div class="wrap">{% block body %}{% endblock %}</div></main>
 <footer><div class="wrap">

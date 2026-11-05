@@ -20,6 +20,8 @@
 .res li { margin-bottom: 10px; line-height: 1.5; }
 .res p.body { max-width: 66ch; line-height: 1.55; }
 .res a { color: var(--accent); }
+.res .vtab { max-width: 760px; }
+.res .vtab small { color: var(--muted); }
 @media print {
   @page { size: letter; margin: 10mm 12mm; }
   .res .what, .res .verdict, .res p.body, .res .cap, .res ul { max-width: none; }
@@ -43,6 +45,17 @@
   .res .num .value { font-size: 15pt; }
   .res h2 { font-size: 12pt; margin: 8px 0 3px; }
   .res li { margin-bottom: 2px; line-height: 1.3; }
+  .res .vtab th, .res .vtab td { padding: 1px 6px; font-size: 8pt; line-height: 1.15; }
+  .res .vtab { max-width: none; width: 100%; }
+  .res .tablewrap { overflow: visible; }
+  .res .vcap, .res .vid, .res .vtab br { display: none; }
+  .res .calrow .chartbox { flex: 0 0 105px; max-width: 105px; }
+  .res h1 { font-size: 15pt; }
+  .res .num .value { font-size: 13pt; margin: 2px 0 1px; }
+  body { font-size: 9.5pt; }
+  .res .num .label, .res .num .help { font-size: 7.5pt; }
+  .res h2 { margin: 6px 0 2px; }
+  .res li { line-height: 1.25; }
   .res p.body, .res .cap { margin: 2px 0; line-height: 1.3; }
   footer { padding-block: 6px; font-size: 8.5pt; }
   footer .owner { font-size: 9pt; }
@@ -79,6 +92,18 @@ paper trading only: no real money is ever used.</p>
       {% if r.staked %}${{ '{:,.2f}'.format(r.pnl) }} on ${{ '{:,.2f}'.format(r.staked) }} staked.{% endif %}</div></div>
 </div>
 
+<h2>Results by model version</h2>
+<p class="cap vcap">Each prediction records which version of the model made it, so every version has its
+own record. A new version starts from zero on the day it begins; earlier results are never changed.</p>
+<div class="tablewrap"><table class="vtab">
+<tr><th>Version</th><th class="n">Settled</th><th class="n">Pretend P&amp;L</th><th class="n">Brier: mine vs market</th></tr>
+{% for v in by_version %}<tr><td>{{ v.label }}{% if v.current %} <strong>(current)</strong>{% endif %}<br>
+<small class="vid">{{ v.version }} · {{ 'from ' ~ v.first_bet[:10] if v.first_bet else 'no bets yet' }}</small></td>
+<td class="n">{{ v.settled }}</td>
+<td class="n">{{ '${:+,.2f}'.format(v.pnl) if v.settled else '—' }}</td>
+<td class="n">{% if v.brier_model is not none %}{{ '{:.3f}'.format(v.brier_model) }} vs {{ '{:.3f}'.format(v.brier_market) }}{% else %}—{% endif %}</td></tr>{% endfor %}
+</table></div>
+
 <h2>Is the model's confidence trustworthy?</h2>
 <div class="calrow">
 <div class="chartbox">{{ cal_svg|safe }}</div>
@@ -98,6 +123,11 @@ time. Dots close to the dashed line mean its confidence matches reality.</p>
   <li>Polymarket's prices turned out to be accurate already, so beating them needs outside
     information. I'm now testing whether weather forecasts beat temperature markets, with every pretend
     trade priced at what it would really have cost.</li>
+  <li>After about 100 settled weather bets (November 2026) the forecasts had not beaten the market:
+    on its most confident bets the model said about 93% and won about 78%. I stopped automatic
+    retraining and started a new version whose confidence is corrected toward the market price, using
+    only earlier data. That correction trusts the market completely, so the new version will rarely
+    bet until the forecasts show they add something.</li>
 </ul>
 
 <h2>How to verify</h2>

@@ -240,3 +240,72 @@ def results_summary(conn):
             out["verdict"] = ("So far my model's probabilities have been more accurate than the "
                               "market's own prices on the markets I bet on.")
     return out
+
+
+def _weather_params(models_dir):
+    out = {}
+    for path in sorted((models_dir / "weather").glob("weather-v*.json")):
+        try:
+            p = json.loads(path.read_text())
+        except ValueError:
+            continue
+        out[p["version"]] = p
+    return out
+
+
+def version_label(version, params):
+    """Plain-language name for a model version."""
+    if params is None:
+        return "General price/volume model" if not (version or "").startswith("weather") \
+            else "Weather model"
+    if params.get("label"):
+        return params["label"]
+    if params.get("refit_of"):
+        return f"Automatic refit of {params['refit_of']}"
+    return "Original weather model (forecast + market blend)"
+
+
+def by_version(conn, models_dir):
+    """FORWARD results split by the model version that placed each bet, oldest
+    first. The current weather version is listed even before its first bet."""
+    weather = _weather_params(models_dir)
+    current_weather = max(weather) if weather else None
+    groups = {}
+    for b in conn.execute("""SELECT b.*, s.yes_payout, s.pnl FROM bets b
+                             LEFT JOIN settlements s USING (bet_id) ORDER BY b.seq"""):
+        groups.setdefault(b["model_version"], []).append(b)
+    if current_weather:
+        groups.setdefault(current_weather, [])
+    out = []
+    for version, rows in groups.items():
+        settled = [r for r in rows if r["yes_payout"] is not None]
+        y = np.array([r["yes_payout"] for r in settled])
+        stake = sum(r["stake"] for r in settled)
+        pnl = sum(r["pnl"] for r in settled)
+        weather_version = version.startswith("weather")
+        out.append({
+            "version": version, "strategy": strategy_of(version),
+            "label": version_label(version, weather.get(version)),
+            "current": version == current_weather if weather_version else None,
+            "first_bet": rows[0]["placed_at"] if rows else None,
+            "bets": len(rows), "settled": len(settled), "open": len(rows) - len(settled),
+            "stake": stake, "pnl": pnl, "return": pnl / stake if stake else None,
+            "win_rate": float(np.mean([r["pnl"] > 0 for r in settled])) if settled else None,
+            "brier_model": float(np.mean((np.array([r["model_prob_yes"] for r in settled]) - y) ** 2))
+            if settled else None,
+            "brier_market": float(np.mean((np.array([r["market_mid"] for r in settled]) - y) ** 2))
+            if settled else None,
+        })
+    out.sort(key=lambda v: (v["first_bet"] is None, v["first_bet"] or ""))
+    return out
+
+
+def weather_stop_loss(conn, models_dir):
+    """Stop-loss status of the current weather version (None if it has no stop-loss)."""
+    from pmodel.weather import rules
+    weather = _weather_params(models_dir)
+    if not weather:
+        return None
+    status = rules.stop_loss_status(conn, weather[max(weather)],
+                                    reviews_path=models_dir / "weather" / "stop_loss_reviews.json")
+    return status if status["enabled"] else None

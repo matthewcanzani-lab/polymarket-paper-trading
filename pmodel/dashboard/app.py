@@ -24,7 +24,8 @@ def create_app(ledger_path=None, scores_path=None, models_dir=MODELS_DIR, weathe
         last = ledger.connect(ledger_path).execute(
             "SELECT MAX(finished_at) FROM runs").fetchone()[0]
         age = data.age_hours(last)
-        return {"pages": PAGES, "active": active, "root": root, "repo_url": REPO_URL,
+        return {"stop_loss": data.weather_stop_loss(ledger.connect(ledger_path), models_dir),
+                "pages": PAGES, "active": active, "root": root, "repo_url": REPO_URL,
                 "cfg": config, "age_hours": data.age_hours,
                 "generated": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
                 "last_run_iso": last, "last_run_et": data.eastern(last),
@@ -42,7 +43,7 @@ def create_app(ledger_path=None, scores_path=None, models_dir=MODELS_DIR, weathe
         return render_template("index.html", **ctx("index.html"), fs=fs, scores=scores,
                                criteria=data.success_criteria(fs), runs_by_strategy=data.latest_runs(c),
                                weather=data.load_weather_scores(weather_scores_path),
-                               integrity=ledger.verify(c),
+                               integrity=ledger.verify(c), by_version=data.by_version(c, models_dir),
                                runs=c.execute("SELECT COUNT(*) FROM runs").fetchone()[0])
 
     @app.route("/markets.html")
@@ -82,14 +83,15 @@ def create_app(ledger_path=None, scores_path=None, models_dir=MODELS_DIR, weathe
         return render_template("stats.html", **ctx("stats.html"), fs=fs,
                                fwd_cal_svg=charts.calibration_chart(fs["calibration"]),
                                criteria=data.success_criteria(fs), current=current,
-                               versions=versions, bt_img=bt_img)
+                               versions=versions, bt_img=bt_img,
+                               by_version=data.by_version(c, models_dir))
 
     @app.route("/results/")
     def results():
         c = conn()
         fs = data.forward_stats(c)
         return render_template("results.html", **ctx("results/", root="../"),
-                               r=data.results_summary(c),
+                               r=data.results_summary(c), by_version=data.by_version(c, models_dir),
                                cal_svg=charts.calibration_chart(fs["calibration"], compact=True))
 
     return app

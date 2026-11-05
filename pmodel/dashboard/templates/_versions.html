@@ -1,0 +1,9 @@
+<div class="tablewrap"><table class="versions">
+<tr><th>Version</th><th>First bet</th><th class="n">Bets</th><th class="n">Settled</th><th class="n">P&amp;L</th><th class="n">Return</th><th class="n">Brier model vs market</th></tr>
+{% for v in by_version %}<tr><td><strong>{{ v.version }}</strong>{% if v.current %} <span class="badge fwd">current</span>{% endif %}<br><small>{{ v.label }}</small></td>
+<td>{{ v.first_bet[:10] if v.first_bet else 'none yet' }}</td>
+<td class="n">{{ v.bets }}</td><td class="n">{{ v.settled }}</td>
+<td class="n {{ 'pos' if v.pnl > 0 else 'neg' if v.pnl < 0 }}">{{ '${:+,.2f}'.format(v.pnl) if v.settled else '—' }}</td>
+<td class="n">{{ '{:+.1%}'.format(v['return']) if v['return'] is not none else '—' }}</td>
+<td class="n">{% if v.brier_model is not none %}{{ '{:.3f}'.format(v.brier_model) }} vs {{ '{:.3f}'.format(v.brier_market) }}{% else %}—{% endif %}</td></tr>{% endfor %}
+</table></div>

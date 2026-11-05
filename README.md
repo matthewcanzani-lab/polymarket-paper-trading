@@ -33,7 +33,7 @@ inflated v2's own first backtest.
 | 3 | Paper trading log: edges > 5 pts, quarter Kelly, slippage, auto-settle, append-only | **done — live ledger started 2026-10-22** |
 | 4 | Flask dashboard (+ static export) | **done** |
 | 5 | Automation: scheduled scoring, retrain every ~50 resolutions | **done (GitHub Actions)** |
-| + | Weather strategy: forecasts + market blend, forward paper test | **live** |
+| + | Weather strategy: forecasts + market blend, forward paper test | **live — calibrated version since 2026-11-05** |
 
 ## Set up on a new computer (from zero)
 
@@ -201,14 +201,52 @@ corrected by each station's learned bias and spread). See
 Brier score, but the backtest can't prove the edge was tradeable, so it is
 being tested FORWARD with every fake fill priced from the live order book.
 
-Rules: bet only 1-2 days ahead (never on the day), > 5-point disagreement with
-the live midpoint, walk the real order book + 1c, quarter Kelly, max 5% of the
-bankroll per bet and per city-day, max 50% of the bankroll at risk overall.
+Rules for every version: bet only 1-2 days ahead (never on the day), walk the
+real order book + 1c, quarter Kelly, max 5% of the bankroll per bet, max 50% of
+the bankroll at risk overall, one bet per market. Each version file in
+`models/weather/` also carries its own `rules` (see `pmodel/weather/rules.py`);
+every bet records the version that placed it, so each version has its own record
+(dashboard: Overview, Model Stats and Results -> "by model version").
+
+### The 2026-11-05 version (`weather-v20261105_215416-calibrated`)
+
+After 108 settled bets the weather model had lost $155.79 and the market's own
+prices had a better Brier score (0.202 vs 0.212). On bets priced 80c+ the model
+said ~93%, the market ~84%, and they won ~78%. The automatic refits since Oct 23
+did worse than the Oct 23 original. So a NEW version was started (no bet or
+settlement was edited; the old versions' results stay as they are):
+
+| Change | Old versions | Calibrated version |
+|---|---|---|
+| Minimum edge | 5 points | **10 points** |
+| Calibration | none | pull the model toward the market price by a factor fitted only on bets settled before 2026-11-05: **fitted factor 0**, i.e. trust the market |
+| City + date cap | 5% per event per run (highs and lows separate, earlier runs not counted, so 16 city-days reached 10%) | **5% in total** across all bets on that city and date |
+| Spread | any | skip if wider than **6c** |
+| Depth | walk deeper levels | skip unless the whole stake fills **at the best price** |
+| Stop-loss | none | if this version's settled P&L reaches **-15% of its starting bankroll** ($844.21, so -$126.63), no new bets and a red flag on every dashboard page until reviewed |
+| Retraining | automatic, weekly | **manual only**, and only once the current version has **150+ settled bets** |
+
+**Caveats, honestly stated:**
+* The 10-point threshold was chosen **after seeing the results** (bets with
+  edges under 10 points lost $352, larger ones made $196 on only 37 bets). It
+  is a hypothesis that needs forward validation, not a proven rule.
+* The calibration was fitted on just 106 bets. Its factor of 0 means the
+  model's disagreements with the market have so far been worth nothing, so
+  this version will place few or no bets. Each run's log and snapshot also
+  record how many bets the OLD rules would have placed (`old_rules_would_have_bet`)
+  so the two can be compared on the same markets. Those are never logged as bets.
+* Before/after chart: `models/weather/weather-v20261105_215416-calibrated_calibration.png`.
+
+**After a stop-loss:** review what happened, then add an entry to
+`models/weather/stop_loss_reviews.json`:
+`[{"version": "<version>", "reviewed_at": "<UTC time, e.g. 2026-12-01T00:00:00Z>", "note": "why it's OK to resume"}]`.
+Losses are then counted again from that time.
 
 ```bash
 python -m pmodel weather-score     # score open temperature markets, log PAPER bets
-python -m pmodel weather-fit       # full refit (needs the market DB; run in a cloud session)
-python -m pmodel weather-refit     # light refit of station bias/spread from fresh API data
+python -m pmodel weather-calibrate --before YYYY-MM-DD   # new version calibrated toward the market
+python -m pmodel weather-fit       # full refit (needs the market DB; manual; needs 150+ settled bets)
+python -m pmodel weather-refit     # light refit from fresh API data (manual; needs 150+ settled bets)
 ```
 
 Polymarket changed the resolution rule on 23 Oct 2026 (hourly routine METAR
@@ -223,9 +261,11 @@ No computer of yours needs to stay on. Two workflows in `.github/workflows/`:
   resolved bets, run the weather and general scorers, rebuild the dashboard,
   and commit `data/predictions.db` back to the repo (each commit is a dated,
   outside record of every bet), then publish the dashboard to GitHub Pages.
-* **Weather model refit** — Sundays: if 50+ weather markets resolved since
-  the current version, re-learn station bias/spread and save a NEW version
-  (`models/weather/weather-v*.json`); old versions are kept.
+* **Weather model refit** — MANUAL ONLY since 2026-11-05 (the weekly schedule
+  is off). It refuses to run until the current version has 150+ settled bets;
+  then, if 50+ weather markets resolved since that version, it re-learns
+  station bias/spread and saves a NEW version (`models/weather/weather-v*.json`)
+  that keeps the current rules and calibration. Old versions are kept.
 
 The general model needs the multi-GB market database to retrain, so that is
 done by hand in a cloud session (`ingest-*`, then `train`); every version is

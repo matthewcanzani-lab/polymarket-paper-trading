@@ -13,12 +13,18 @@
   <div class="tile"><div class="k">Settled bets</div><div class="v">{{ fs.settled }}</div></div>
   <div class="tile"><div class="k">Scorer runs</div><div class="v">{{ runs }}</div></div>
 </div>
+{% if stop_loss %}<p class="note"><strong>Weather stop-loss:</strong> {{ stop_loss.version }} is
+{{ 'HALTED' if stop_loss.halted else 'active' }}. Settled P&amp;L ${{ '{:+,.2f}'.format(stop_loss.pnl) }};
+new bets stop at ${{ '{:,.2f}'.format(stop_loss.limit) }}
+({{ '{:.0%}'.format(stop_loss.fraction) }} of its ${{ '{:,.2f}'.format(stop_loss.starting_bankroll) }} starting bankroll).</p>{% endif %}
+<h2>Results by model version</h2>
+{% include "_versions.html" %}
 <h2>Progress toward the success criteria</h2>
 {% include "_criteria.html" %}
 </section>
 <h2>Latest run of each strategy</h2>
 {% if runs_by_strategy %}<div class="tablewrap"><table>
-<tr><th>Strategy</th><th>Finished (UTC)</th><th class="n">Markets scored</th><th class="n">Disagreements &gt; {{ (cfg.EDGE_THRESHOLD * 100)|round|int }} pts</th><th class="n">Paper bets placed</th></tr>
+<tr><th>Strategy</th><th>Finished (UTC)</th><th class="n">Markets scored</th><th class="n">Disagreements above its edge threshold</th><th class="n">Paper bets placed</th></tr>
 {% for r in runs_by_strategy %}<tr><td>{{ r.strategy }}</td><td>{{ r.finished_at[:16].replace('T', ' ') }}</td>
 <td class="n">{{ '{:,}'.format(r.markets_scored) }}</td><td class="n">{{ r.signals }}</td><td class="n">{{ r.bets_placed }}</td></tr>{% endfor %}
 </table></div>

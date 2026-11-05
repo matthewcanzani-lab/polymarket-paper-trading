@@ -111,3 +111,49 @@ def refit_errors(conn, base: dict, log=print) -> dict:
             "global": {f"{k}|{l}": list(v) for (k, l), v in model.global_.items()},
             "by_key": {f"{s}|{k}|{l}": list(v) for (s, k, l), v in model.by_key.items()},
             "stations": stations}
+
+
+# ---------------------------------------------------------------- retraining guard
+MIN_SETTLED_BEFORE_RETRAIN = 150
+
+
+def settled_bets(ledger_conn, version: str) -> int:
+    return ledger_conn.execute(
+        """SELECT COUNT(*) FROM bets b JOIN settlements s USING (bet_id)
+           WHERE b.model_version = ?""", (version,)).fetchone()[0]
+
+
+def retrain_allowed(ledger_conn, params: dict) -> tuple[bool, str]:
+    """Refits are manual only (since 2026-11-05) and need the current version to
+    have a big enough forward record to judge the next one against."""
+    n = settled_bets(ledger_conn, params["version"])
+    if n < MIN_SETTLED_BEFORE_RETRAIN:
+        return False, (f"{params['version']} has {n} settled bets; retraining waits until it has "
+                       f"{MIN_SETTLED_BEFORE_RETRAIN}+.")
+    return True, f"{params['version']} has {n} settled bets."
+
+
+# ---------------------------------------------------------------- calibrated version
+CALIBRATED_RULES = {
+    "edge_threshold": 0.10,            # chosen AFTER seeing results: needs forward validation
+    "max_spread": 0.06,
+    "fill_at_best_price_only": True,
+    "city_day_cap_fraction": 0.05,     # all bets on one city + date, across runs and high/low
+    "stop_loss_fraction": 0.15,
+}
+
+
+def calibrated_version(ledger_conn, base: dict, before: str) -> dict:
+    """A new version: `base`'s forecast model + a calibration toward the market
+    fitted only on paper bets settled before `before`, + the stricter rules."""
+    from pmodel.trading import ledger
+    from pmodel.weather import rules
+    now = datetime.now(timezone.utc)
+    return {**base,
+            "version": "weather-v" + now.strftime("%Y%m%d_%H%M%S") + "-calibrated",
+            "label": "Calibrated to market, 10-pt edge, spread/depth filters, city-day cap, stop-loss",
+            "created_at": now.isoformat(timespec="seconds"),
+            "based_on": base["version"],
+            "calibration": rules.fit_calibration(ledger_conn, before),
+            "rules": dict(CALIBRATED_RULES),
+            "starting_bankroll": round(ledger.bankroll(ledger_conn)["bankroll"], 2)}

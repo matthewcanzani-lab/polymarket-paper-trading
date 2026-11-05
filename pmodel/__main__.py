@@ -131,16 +131,57 @@ def cmd_weather_backtest(args):
     print(f"Saved {out}")
 
 
+def _retrain_guard(args):
+    """Weather retraining is manual and waits for 150+ settled bets (see artifact.py)."""
+    from pmodel.weather import artifact
+    base, _ = artifact.load_latest()
+    ok, why = artifact.retrain_allowed(_ledger(args), base)
+    print(why)
+    if not ok:
+        raise SystemExit(0)
+    return base
+
+
+def _carry_forward(new, base, args):
+    """A retrained version keeps the current rules and calibration (refit those
+    deliberately, not by accident) and starts its own stop-loss bankroll."""
+    from pmodel.trading import ledger
+    for key in ("rules", "calibration"):
+        if key in base:
+            new[key] = base[key]
+    new["label"] = f"Retrain of {base['version']}"
+    new["starting_bankroll"] = round(ledger.bankroll(_ledger(args))["bankroll"], 2)
+    return new
+
+
 def cmd_weather_fit(args):
     from pmodel.weather import artifact
-    print("Saved", artifact.save(artifact.fit(db.connect())))
+    base = _retrain_guard(args)
+    print("Saved", artifact.save(_carry_forward(artifact.fit(db.connect()), base, args)))
+
+
+def cmd_weather_calibrate(args):
+    """One-off (2026-11-05): new version = latest forecast model + calibration
+    fitted on bets settled before --before, with the stricter rules."""
+    import json
+    from pmodel.weather import artifact
+    base, _ = artifact.load_latest()
+    params = artifact.calibrated_version(_ledger(args), base, args.before)
+    print(json.dumps({k: params[k] for k in ("version", "based_on", "calibration", "rules",
+                                             "starting_bankroll")}, indent=1))
+    path = artifact.save(params)
+    print("Saved", path)
+    from pmodel.weather import rules
+    print("Chart", rules.calibration_chart(_ledger(args), args.before, params["calibration"]["k"],
+                                           path.with_name(params["version"] + "_calibration.png")))
 
 
 def cmd_weather_refit(args):
-    """Weekly automation: rebuild a small weather DB from the APIs and refit errors."""
+    """Manual only: rebuild a small weather DB from the APIs and refit errors."""
     from datetime import datetime, timedelta, timezone
     from pathlib import Path
     from pmodel.weather import artifact, collect
+    _retrain_guard(args)
     conn = db.connect(Path(args.db))
     end = datetime.now(timezone.utc).date()
     start = end - timedelta(days=args.days)
@@ -152,7 +193,7 @@ def cmd_weather_refit(args):
     if new_resolved < args.min_new:
         print(f"Only {new_resolved} newly resolved weather markets (< {args.min_new}); keeping {base['version']}.")
         return
-    print("Saved", artifact.save(artifact.refit_errors(conn, base)))
+    print("Saved", artifact.save(_carry_forward(artifact.refit_errors(conn, base), base, args)))
 
 
 def cmd_weather_score(args):
@@ -225,13 +266,19 @@ def main():
     s.add_argument("--end", required=True)
     s.add_argument("--prices-from", help="also fetch price history for markets from this date")
     s.set_defaults(func=cmd_weather_collect)
-    sub.add_parser("weather-fit", help="fit + save a new weather model version (needs market DB)").set_defaults(
-        func=cmd_weather_fit)
-    s = sub.add_parser("weather-refit", help="automation: refit weather errors from fresh API data")
+    s = sub.add_parser("weather-fit", help="fit + save a new weather model version (needs market DB)")
+    s.add_argument("--ledger", help="ledger file (default data/predictions.db)")
+    s.set_defaults(func=cmd_weather_fit)
+    s = sub.add_parser("weather-refit", help="refit weather errors from fresh API data (manual only)")
+    s.add_argument("--ledger", help="ledger file (default data/predictions.db)")
     s.add_argument("--db", default="data/weather_refit.db")
     s.add_argument("--days", type=int, default=240)
     s.add_argument("--min-new", type=int, default=50, help="retrain only after this many new resolutions")
     s.set_defaults(func=cmd_weather_refit)
+    s = sub.add_parser("weather-calibrate", help="save a new weather version calibrated toward the market")
+    s.add_argument("--ledger", help="ledger file (default data/predictions.db)")
+    s.add_argument("--before", required=True, help="fit only on bets settled before this date (YYYY-MM-DD)")
+    s.set_defaults(func=cmd_weather_calibrate)
     s = sub.add_parser("weather-score", help="score open temperature markets and log PAPER bets")
     s.add_argument("--ledger", help="ledger file (default data/predictions.db)")
     s.add_argument("--snapshot", help="where to save the scored-markets snapshot for the dashboard")

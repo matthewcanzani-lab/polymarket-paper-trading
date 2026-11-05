@@ -12,6 +12,9 @@
 <h2>Calibration of paper bets</h2>
 <p class="note">For each bet: the probability the model gave the side I bought vs. how often that side won.</p>
 {{ fwd_cal_svg|safe }}
+<h2>By model version</h2>
+<p class="note">Each bet records the version that placed it, so a new version starts its own record from its first bet.</p>
+{% include "_versions.html" %}
 {% if fs.by_strategy %}<h2>By strategy</h2><div class="tablewrap"><table>
 <tr><th>Strategy</th><th class="n">Settled bets</th><th class="n">Staked</th><th class="n">P&amp;L</th><th class="n">Return</th></tr>
 {% for c in fs.by_strategy %}<tr><td>{{ c.strategy }}</td><td class="n">{{ c.bets }}</td><td class="n">${{ '{:,.2f}'.format(c.stake) }}</td>
