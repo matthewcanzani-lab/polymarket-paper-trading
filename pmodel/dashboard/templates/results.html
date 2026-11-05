@@ -57,7 +57,7 @@
   .res h2 { margin: 6px 0 2px; }
   .res li { line-height: 1.25; }
   .res p.body, .res .cap { margin: 2px 0; line-height: 1.3; }
-  footer { padding-block: 6px; font-size: 8.5pt; }
+  footer { padding-block: 3px; font-size: 8.5pt; }
   footer .owner { font-size: 9pt; }
   a { color: #000; }
 }
@@ -92,7 +92,12 @@ paper trading only: no real money is ever used.</p>
       {% if r.staked %}${{ '{:,.2f}'.format(r.pnl) }} on ${{ '{:,.2f}'.format(r.staked) }} staked.{% endif %}</div></div>
 </div>
 
-<h2>Results by model version</h2>
+<h2>Bets by model version</h2>
+<p class="cap">{% if pr.logged %}Besides these bets, since {{ pr.since[:10] }} I log every market my
+models score, bet or not: {{ '{:,}'.format(pr.logged) }} predictions so far, {{ '{:,}'.format(pr.resolved) }}
+resolved{% for g in pr.groups if g.brier_model is not none %}{% if loop.first %} (Brier, mine vs market:{% endif %}
+{{ g.strategy }} {{ '{:.3f}'.format(g.brier_model) }} vs {{ '{:.3f}'.format(g.brier_market) }}{{ ')' if loop.last else ';' }}{% endfor %}.
+{% else %}From 5 Nov 2026 I also log every market my models score, bet or not.{% endif %}</p>
 <p class="cap vcap">Each prediction records which version of the model made it, so every version has its
 own record. A new version starts from zero on the day it begins; earlier results are never changed.</p>
 <div class="tablewrap"><table class="vtab">
@@ -117,17 +122,16 @@ time. Dots close to the dashed line mean its confidence matches reality.</p>
     simulated return. But it used information that was not yet known when each prediction was made,
     such as a market's final trading volume, and it mixed up time periods. This mistake is called
     <em>look-ahead bias</em>, and it makes a model look far better than it is.</li>
-  <li>In this version the model may only use what was knowable at the moment of each prediction, it is
-    tested on later months than it learned from, and every bet is logged before the outcome. When I
-    removed the same leak here, an apparent +24% edge disappeared.</li>
+  <li>This version only uses what was knowable when each prediction was made, is tested on later
+    months, and logs every prediction before the outcome. Removing the same leak here erased an
+    apparent +24% edge.</li>
   <li>Polymarket's prices turned out to be accurate already, so beating them needs outside
-    information. I'm now testing whether weather forecasts beat temperature markets, with every pretend
-    trade priced at what it would really have cost.</li>
+    information, so I tested weather forecasts on temperature markets, pricing every pretend trade at
+    what it would really have cost.</li>
   <li>After about 100 settled weather bets (November 2026) the forecasts had not beaten the market:
-    on its most confident bets the model said about 93% and won about 78%. I stopped automatic
-    retraining and started a new version whose confidence is corrected toward the market price, using
-    only earlier data. That correction trusts the market completely, so the new version will rarely
-    bet until the forecasts show they add something.</li>
+    on its most confident bets it said about 93% and won about 78%. I stopped automatic retraining and
+    started a new version corrected toward the market price using only earlier data. That correction
+    trusts the market completely, so it rarely bets until the forecasts prove they add something.</li>
 </ul>
 
 <h2>How to verify</h2>

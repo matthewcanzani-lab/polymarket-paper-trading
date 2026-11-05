@@ -1,0 +1,12 @@
+<p class="note">Every market a model scores is logged once per model version before it resolves,
+whether or not it was bet on, so this record keeps growing even when no bet clears the rules.
+"Forecast only" is the weather model before its calibration toward the market.</p>
+{% if pr.groups %}<div class="tablewrap"><table>
+<tr><th>Model version</th><th class="n">Logged</th><th class="n">Resolved</th><th class="n">Brier: model</th><th class="n">Brier: market</th><th class="n">Brier: forecast only</th></tr>
+{% for g in pr.groups %}<tr><td>{{ g.label }}<br><small>since {{ g.first[:10] }}</small></td>
+<td class="n">{{ '{:,}'.format(g.logged) }}</td><td class="n">{{ '{:,}'.format(g.resolved) }}</td>
+<td class="n">{{ '{:.4f}'.format(g.brier_model) if g.brier_model is not none else '—' }}</td>
+<td class="n">{{ '{:.4f}'.format(g.brier_market) if g.brier_market is not none else '—' }}</td>
+<td class="n">{{ '{:.4f}'.format(g.brier_raw) if g.brier_raw is not none else '—' }}</td></tr>{% endfor %}
+</table></div>
+{% else %}<p class="empty">No predictions logged yet; the next automated run starts the log.</p>{% endif %}

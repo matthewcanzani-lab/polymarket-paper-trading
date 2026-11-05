@@ -67,13 +67,17 @@ def _ledger(args):
 
 def cmd_score(args):
     from pmodel.trading import scorer
+    from pmodel.trading import predlog
     snapshot = None if args.ledger else config.LATEST_SCORES_PATH
-    scorer.run(PolymarketSource(), _ledger(args), workers=args.workers, snapshot_path=snapshot)
+    scorer.run(PolymarketSource(), _ledger(args), workers=args.workers, snapshot_path=snapshot,
+               predlog_dir=None if args.ledger else predlog.DIR)
 
 
 def cmd_settle(args):
-    from pmodel.trading import settle
+    from pmodel.trading import predlog, settle
     settle.run(PolymarketSource(), _ledger(args))
+    if not args.ledger:
+        predlog.resolve(PolymarketSource())
 
 
 def cmd_ledger(args):
@@ -94,7 +98,16 @@ def cmd_ledger(args):
     for r in conn.execute("SELECT * FROM bets ORDER BY seq DESC LIMIT 10"):
         print(f"  {r['placed_at']} {r['side']:3} ${r['stake']:7.2f} @ {r['fill_price']:.3f} "
               f"model {r['model_prob_yes']:.0%} mkt {r['market_mid']:.0%}  {r['question'][:50]}")
-    if problems:
+    from pmodel.trading import predlog
+    log_problems = [] if args.ledger else predlog.verify()
+    preds, outs = (0, 0) if args.ledger else (len(predlog.read("predictions")),
+                                               len(predlog.read("outcomes")))
+    print(f"Prediction log: {predlog.DIR}")
+    print(f"  integrity:   {'OK' if not log_problems else 'PROBLEMS:'}")
+    for p in log_problems:
+        print(f"    ! {p}")
+    print(f"  predictions: {preds:,} logged, {outs:,} markets resolved")
+    if problems or log_problems:
         raise SystemExit(1)  # make automation stop instead of committing a damaged ledger
 
 
@@ -201,7 +214,9 @@ def cmd_weather_score(args):
     from pmodel.weather import scorer
     snapshot = Path(args.snapshot) if args.snapshot else (
         None if args.ledger else config.LATEST_WEATHER_SCORES_PATH)
-    scorer.run(_ledger(args), snapshot_path=snapshot)
+    from pmodel.trading import predlog
+    scorer.run(_ledger(args), snapshot_path=snapshot,
+               predlog_dir=None if args.ledger else predlog.DIR)
 
 
 def cmd_status(args):

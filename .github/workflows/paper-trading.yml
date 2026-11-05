@@ -12,7 +12,7 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: write              # to commit data/predictions.db back to the repo
+  contents: write              # to commit data/predictions.db + data/predlog/ back to the repo
   pages: write                 # to publish the dashboard to GitHub Pages
   id-token: write              # required by actions/deploy-pages
 
@@ -32,7 +32,7 @@ jobs:
         run: python -m pytest -q
       - name: Check the ledger hasn't been tampered with
         run: python -m pmodel ledger
-      - name: Settle bets on resolved markets
+      - name: Settle bets and record outcomes of logged predictions
         run: python -m pmodel settle
       - name: Score weather markets
         run: python -m pmodel weather-score
@@ -49,7 +49,7 @@ jobs:
           python -m pmodel ledger
           git config user.name "paper-trading-bot"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/predictions.db
+          git add data/predictions.db data/predlog/
           if git diff --cached --quiet; then echo "No ledger changes."; exit 0; fi
           git commit -m "Paper trading run $(date -u +%Y-%m-%dT%H:%MZ) [automated]"
           for i in 1 2 3; do

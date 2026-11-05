@@ -92,7 +92,7 @@ def _would_bet_old_rules(raw, mid, book, money) -> bool:
     return sized is not None and sized["shares"] >= book.min_order_shares
 
 
-def run(conn, log=print, now=None, source=None, snapshot_path=None) -> dict:
+def run(conn, log=print, now=None, source=None, snapshot_path=None, predlog_dir=None) -> dict:
     now = now or datetime.now(timezone.utc)
     source = source or PolymarketSource()
     params, model = artifact.load_latest()
@@ -242,6 +242,10 @@ def run(conn, log=print, now=None, source=None, snapshot_path=None) -> dict:
             "model_version": version, "edge_threshold": rules["edge_threshold"],
             "stop_loss": stop,
             "summary": summary, "markets": snapshot}))
+    if predlog_dir:
+        from pmodel.trading import predlog
+        summary["predictions_logged"] = predlog.log_predictions(
+            snapshot, "weather", version, run_id, predlog_dir)
     if failed:
         summary["stations_without_forecast"] = len(failed)
     log(f"Weather run finished: {summary}")

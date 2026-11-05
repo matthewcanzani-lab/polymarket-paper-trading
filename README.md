@@ -170,6 +170,26 @@ hash-chained to the previous one (`ledger` detects any edit), and the file is
 committed to git so GitHub holds dated copies. Trading logic lives in
 `pmodel/trading/` and only talks to the `MarketSource` interface.
 
+## The prediction log: every scored market, not just bets
+
+Since 2026-11-05 every market a model scores is logged in `data/predlog/`,
+whether or not it was bet on, so the forward record keeps growing even when no
+bet clears the rules (bets are a small, selected subset of predictions).
+
+* `predictions-YYYY-MM.csv`: the FIRST prediction each model version makes for
+  each market, with the market's midpoint at that moment (re-scores of the same
+  market by the same version are not logged, so nothing can be picked later).
+  Weather rows also keep the forecast-only probability (before calibration).
+* `outcomes-YYYY-MM.csv`: how each predicted market resolved, recorded by
+  `python -m pmodel settle`.
+
+Same protections as the bet ledger: append-only, every row hash-chained to the
+one before, checked by `python -m pmodel ledger`, committed every run. Plain
+text rather than SQLite because git stores appended text efficiently but
+re-stores a binary file in full on every commit. The dashboard (Overview, Model
+Stats) and the Results page show Brier score per model version: model vs the
+market's own price (and, for weather, the forecast alone).
+
 ## Phase 4: dashboard
 
 ```bash
@@ -279,6 +299,7 @@ Run either workflow by hand: GitHub -> Actions -> pick it -> "Run workflow".
 |---|---|---|---|
 | `data/market_data.db` | markets, snapshots, price history, outcomes | **No** (large, re-downloadable) | not needed |
 | `data/predictions.db` | the paper-bet / prediction log (Phase 3) | **Yes** | git **and** `BACKUP_DIR` |
+| `data/predlog/*.csv` | every scored market + its outcome | **Yes** | git |
 
 They're separate so that rebuilding or deleting the market cache can never touch
 the prediction log. The prediction log is the one thing that can't be recreated:

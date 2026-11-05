@@ -17,7 +17,10 @@ PAGES = [("index.html", "Overview"), ("markets.html", "Live Markets"), ("edges.h
          ("results/", "Results")]
 
 
-def create_app(ledger_path=None, scores_path=None, models_dir=MODELS_DIR, weather_scores_path=None):
+def create_app(ledger_path=None, scores_path=None, models_dir=MODELS_DIR, weather_scores_path=None,
+               predlog_dir=None):
+    from pmodel.trading import predlog
+    predlog_dir = predlog_dir or predlog.DIR
     app = Flask(__name__)
 
     def ctx(active, root=""):
@@ -44,6 +47,7 @@ def create_app(ledger_path=None, scores_path=None, models_dir=MODELS_DIR, weathe
                                criteria=data.success_criteria(fs), runs_by_strategy=data.latest_runs(c),
                                weather=data.load_weather_scores(weather_scores_path),
                                integrity=ledger.verify(c), by_version=data.by_version(c, models_dir),
+                               pr=data.prediction_record(predlog_dir),
                                runs=c.execute("SELECT COUNT(*) FROM runs").fetchone()[0])
 
     @app.route("/markets.html")
@@ -84,7 +88,8 @@ def create_app(ledger_path=None, scores_path=None, models_dir=MODELS_DIR, weathe
                                fwd_cal_svg=charts.calibration_chart(fs["calibration"]),
                                criteria=data.success_criteria(fs), current=current,
                                versions=versions, bt_img=bt_img,
-                               by_version=data.by_version(c, models_dir))
+                               by_version=data.by_version(c, models_dir),
+                               pr=data.prediction_record(predlog_dir))
 
     @app.route("/results/")
     def results():
@@ -92,6 +97,7 @@ def create_app(ledger_path=None, scores_path=None, models_dir=MODELS_DIR, weathe
         fs = data.forward_stats(c)
         return render_template("results.html", **ctx("results/", root="../"),
                                r=data.results_summary(c), by_version=data.by_version(c, models_dir),
+                               pr=data.prediction_record(predlog_dir),
                                cal_svg=charts.calibration_chart(fs["calibration"], compact=True))
 
     return app

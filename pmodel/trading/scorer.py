@@ -91,7 +91,8 @@ def _features_now(source: MarketSource, market, t: int):
     return features_at(static_info(market), ts, ps, t, step, trades)
 
 
-def run(source: MarketSource, conn, workers=8, log=print, snapshot_path=None) -> dict:
+def run(source: MarketSource, conn, workers=8, log=print, snapshot_path=None,
+        predlog_dir=None) -> dict:
     started = datetime.now(timezone.utc)
     model = registry.latest()
     run_id = f"run-{started.strftime('%Y%m%dT%H%M%SZ')}-{uuid.uuid4().hex[:6]}"
@@ -168,5 +169,9 @@ def run(source: MarketSource, conn, workers=8, log=print, snapshot_path=None) ->
             "run_id": run_id, "scored_at": _iso(started), "model_version": model.version,
             "edge_threshold": config.EDGE_THRESHOLD, "markets": snapshot}))
     summary = {"markets_scored": len(scored), "signals": signals, "bets_placed": len(bets)}
+    if predlog_dir:
+        from pmodel.trading import predlog
+        summary["predictions_logged"] = predlog.log_predictions(
+            snapshot, "general", model.version, run_id, predlog_dir)
     log(f"Run finished: {summary}")
     return summary

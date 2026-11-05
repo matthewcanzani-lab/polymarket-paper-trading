@@ -13,6 +13,8 @@ data/*
 !data/.gitkeep
 # ...EXCEPT the prediction log, which is irreplaceable and MUST be committed.
 !data/predictions.db
+# ...and the prediction log (every scored market, append-only text files).
+!data/predlog/
 
 # Raw API dumps
 *.jsonl

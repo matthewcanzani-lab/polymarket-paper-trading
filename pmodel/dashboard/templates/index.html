@@ -17,7 +17,9 @@
 {{ 'HALTED' if stop_loss.halted else 'active' }}. Settled P&amp;L ${{ '{:+,.2f}'.format(stop_loss.pnl) }};
 new bets stop at ${{ '{:,.2f}'.format(stop_loss.limit) }}
 ({{ '{:.0%}'.format(stop_loss.fraction) }} of its ${{ '{:,.2f}'.format(stop_loss.starting_bankroll) }} starting bankroll).</p>{% endif %}
-<h2>Results by model version</h2>
+<h2>Every prediction, not just bets</h2>
+{% include "_predlog.html" %}
+<h2>Bets by model version</h2>
 {% include "_versions.html" %}
 <h2>Progress toward the success criteria</h2>
 {% include "_criteria.html" %}

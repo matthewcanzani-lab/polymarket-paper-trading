@@ -300,6 +300,19 @@ def by_version(conn, models_dir):
     return out
 
 
+def prediction_record(predlog_dir):
+    """FORWARD accuracy on EVERY scored market (the prediction log), per model
+    version, plus totals. Bets are a subset; this is the larger, unselected record."""
+    from pmodel.trading import predlog
+    groups = predlog.record(predlog_dir)
+    for g in groups:
+        g["label"] = ("Weather" if g["strategy"] == "weather" else "General") + " · " + g["version"]
+    total = {"logged": sum(g["logged"] for g in groups),
+             "resolved": sum(g["resolved"] for g in groups),
+             "since": min((g["first"] for g in groups), default=None)}
+    return {"groups": groups, **total}
+
+
 def weather_stop_loss(conn, models_dir):
     """Stop-loss status of the current weather version (None if it has no stop-loss)."""
     from pmodel.weather import rules
