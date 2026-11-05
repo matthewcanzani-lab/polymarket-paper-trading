@@ -121,3 +121,41 @@ def test_granularity_uses_scheduled_length_not_actual_close(monkeypatch):
                         lambda url, params=None: calls.append(params) or {"history": []})
     src.price_history(m)
     assert calls == [{"market": "tok7yes", "interval": "max", "fidelity": 720}]
+
+
+def _trade_market():
+    m = PolymarketSource().parse_market(gamma_market(7))
+    return m.__class__(**{**m.__dict__, "condition_id": "0xabc"})
+
+
+def test_trade_history_follows_v2_cursor(monkeypatch):
+    """Data API v2: filter by `condition`, page with `cursor` (v1 /trades returns 410)."""
+    pages = {None: {"data": [{"timestamp": 7200, "size": 10, "price": 0.5},
+                             {"timestamp": 7300, "size": 4, "price": 0.25}],
+                    "pagination": {"has_more": True, "next_cursor": "c1"}},
+             "c1": {"data": [{"timestamp": 3600, "size": 2, "price": 0.5}],
+                    "pagination": {"has_more": False, "next_cursor": None}}}
+    calls = []
+
+    def fake_get(url, params=None):
+        assert url.endswith("/v2/trades")
+        calls.append(params)
+        return pages[params.get("cursor")]
+
+    monkeypatch.setattr(polymarket.safe_http, "get_json", fake_get)
+    th = PolymarketSource().trade_history(_trade_market())
+    assert [c.get("cursor") for c in calls] == [None, "c1"]
+    assert all(c["condition"] == "0xabc" and "offset" not in c for c in calls)
+    assert [(b.hour_ts, b.usd, b.trades) for b in th.buckets] == [(3600, 1.0, 1), (7200, 6.0, 2)]
+    assert th.complete and th.earliest_ts == 3600
+
+
+def test_trade_history_keeps_the_training_depth_cap(monkeypatch):
+    page = {"data": [{"timestamp": 3600, "size": 1, "price": 0.5}] * polymarket.TRADES_PAGE,
+            "pagination": {"has_more": True, "next_cursor": "more"}}
+    calls = []
+    monkeypatch.setattr(polymarket.safe_http, "get_json",
+                        lambda url, params=None: calls.append(1) or page)
+    th = PolymarketSource().trade_history(_trade_market())
+    assert not th.complete
+    assert len(calls) == polymarket.TRADES_MAX_OFFSET // polymarket.TRADES_PAGE + 1  # same as v1

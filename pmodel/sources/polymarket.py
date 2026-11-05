@@ -13,11 +13,15 @@ from pmodel.sources.base import (Market, MarketSource, OrderBook, PricePoint, Re
 
 GAMMA_URL = "https://gamma-api.polymarket.com/markets/keyset"  # cursor paging (plain /markets caps the offset)
 PRICES_URL = "https://clob.polymarket.com/prices-history"
-TRADES_URL = "https://data-api.polymarket.com/trades"
+# Data API v1 (/trades) was retired in Nov 2026 (HTTP 410); v2 pages by cursor.
+TRADES_URL = "https://data-api.polymarket.com/v2/trades"
 BOOK_URL = "https://clob.polymarket.com/book"  # public, read-only order book
 MARKETS_BY_ID_URL = "https://gamma-api.polymarket.com/markets"
 TRADES_PAGE = 500
-TRADES_MAX_OFFSET = 10_000  # the Data API refuses deeper pages (newest trades come first)
+# v1 refused pages past offset 10,000 (newest trades come first), and the model's
+# training data was built under that limit. v2 has no such limit, but we keep it
+# so live features are computed the same way as the ones the model learned from.
+TRADES_MAX_OFFSET = 10_000
 PAGE_SIZE = 100  # the API's maximum page size
 
 # Price history quirks (checked against the live API, Oct 2026):
@@ -232,11 +236,14 @@ class PolymarketSource(MarketSource):
 
     def trade_history(self, market: Market) -> TradeHistory:
         buckets, earliest, complete = {}, None, True
-        offset = 0
+        offset, cursor = 0, None
         while True:
-            page = safe_http.get_json(TRADES_URL, params={
-                "market": market.condition_id, "limit": TRADES_PAGE, "offset": offset})
-            if not isinstance(page, list) or not page:
+            params = {"condition": market.condition_id, "limit": TRADES_PAGE}
+            if cursor:
+                params["cursor"] = cursor
+            resp = safe_http.get_json(TRADES_URL, params=params) or {}
+            page = resp.get("data") or []
+            if not page:
                 break
             for t in page:
                 ts = int(t["timestamp"])
@@ -244,11 +251,13 @@ class PolymarketSource(MarketSource):
                 usd, n = buckets.get(hour, (0.0, 0))
                 buckets[hour] = (usd + float(t["size"]) * float(t["price"]), n + 1)
                 earliest = ts if earliest is None else min(earliest, ts)
-            if len(page) < TRADES_PAGE:
+            more = resp.get("pagination") or {}
+            cursor = more.get("next_cursor")
+            if not more.get("has_more") or not cursor:
                 break
             offset += TRADES_PAGE
             if offset > TRADES_MAX_OFFSET:
-                complete = False  # older trades exist but the API won't return them
+                complete = False  # older trades exist beyond the cap above
                 break
         return TradeHistory([TradeBucket(h, u, n) for h, (u, n) in sorted(buckets.items())],
                             complete, earliest)
